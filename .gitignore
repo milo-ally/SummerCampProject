@@ -45,7 +45,7 @@ data/**/*.webm
 *.joblib
 *.pkl
 
-# workspace 
+# workspace and coding agents
 .agents 
 .vscode
 .claude
