@@ -3,13 +3,28 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    auc,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    roc_curve,
+)
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from models import build_model
+
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -144,6 +159,145 @@ def evaluate(
     return metrics
 
 
+def predict_probabilities(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray]:
+    model.eval()
+    probabilities = []
+    targets = []
+    with torch.no_grad():
+        for X_batch, y_batch in loader:
+            logits = model(X_batch.to(device))
+            probabilities.extend(torch.sigmoid(logits).cpu().numpy().reshape(-1).tolist())
+            targets.extend(y_batch.numpy().reshape(-1).tolist())
+    return np.array(targets, dtype=np.float32), np.array(probabilities, dtype=np.float32)
+
+
+def plot_training_curves(history: list[dict[str, float]], output_dir: Path) -> Path:
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    epochs = [row["epoch"] for row in history]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9), constrained_layout=True)
+    axes[0, 0].plot(epochs, [row["train_loss"] for row in history], label="train")
+    axes[0, 0].plot(epochs, [row["val_loss"] for row in history], label="val")
+    axes[0, 0].set_title("Loss")
+    axes[0, 0].set_xlabel("epoch")
+    axes[0, 0].set_ylabel("BCE loss")
+
+    for metric in ["accuracy", "precision", "recall", "f1"]:
+        axes[0, 1].plot(
+            epochs,
+            [row[f"train_{metric}"] for row in history],
+            linestyle="--",
+            label=f"train {metric}",
+        )
+        axes[0, 1].plot(
+            epochs,
+            [row[f"val_{metric}"] for row in history],
+            label=f"val {metric}",
+        )
+    axes[0, 1].set_title("Classification metrics")
+    axes[0, 1].set_xlabel("epoch")
+    axes[0, 1].set_ylabel("score")
+
+    axes[1, 0].plot(epochs, [row["train_auc"] for row in history], label="train AUC")
+    axes[1, 0].plot(epochs, [row["val_auc"] for row in history], label="val AUC")
+    axes[1, 0].set_title("ROC AUC")
+    axes[1, 0].set_xlabel("epoch")
+    axes[1, 0].set_ylabel("AUC")
+
+    axes[1, 1].plot(epochs, [row["train_f1"] for row in history], label="train F1")
+    axes[1, 1].plot(epochs, [row["val_f1"] for row in history], label="val F1")
+    axes[1, 1].set_title("F1")
+    axes[1, 1].set_xlabel("epoch")
+    axes[1, 1].set_ylabel("F1")
+
+    for axis in axes.ravel():
+        axis.grid(True, alpha=0.3)
+        axis.legend(fontsize=8)
+
+    path = plots_dir / "training_curves.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def plot_test_classification_figures(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    threshold: float,
+    output_dir: Path,
+) -> list[Path]:
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    saved_paths = []
+    y_pred = (y_prob >= threshold).astype(np.float32)
+
+    matrix = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    fig, axis = plt.subplots(figsize=(5.5, 5), constrained_layout=True)
+    image = axis.imshow(matrix, cmap="Blues")
+    axis.set_title("Confusion matrix")
+    axis.set_xlabel("predicted")
+    axis.set_ylabel("true")
+    axis.set_xticks([0, 1], labels=["normal", "high risk"])
+    axis.set_yticks([0, 1], labels=["normal", "high risk"])
+    for row in range(matrix.shape[0]):
+        for col in range(matrix.shape[1]):
+            axis.text(col, row, str(matrix[row, col]), ha="center", va="center")
+    fig.colorbar(image, ax=axis)
+    path = plots_dir / "confusion_matrix.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    saved_paths.append(path)
+
+    if len(np.unique(y_true)) == 2:
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        fig, axis = plt.subplots(figsize=(6, 5), constrained_layout=True)
+        axis.plot(fpr, tpr, label=f"AUC = {auc(fpr, tpr):.3f}")
+        axis.plot([0, 1], [0, 1], linestyle="--", color="gray")
+        axis.set_title("ROC curve")
+        axis.set_xlabel("false positive rate")
+        axis.set_ylabel("true positive rate")
+        axis.grid(True, alpha=0.3)
+        axis.legend()
+        path = plots_dir / "roc_curve.png"
+        fig.savefig(path, dpi=160)
+        plt.close(fig)
+        saved_paths.append(path)
+
+        precision, recall, _ = precision_recall_curve(y_true, y_prob)
+        fig, axis = plt.subplots(figsize=(6, 5), constrained_layout=True)
+        axis.plot(recall, precision, label=f"PR AUC = {auc(recall, precision):.3f}")
+        axis.set_title("Precision-recall curve")
+        axis.set_xlabel("recall")
+        axis.set_ylabel("precision")
+        axis.grid(True, alpha=0.3)
+        axis.legend()
+        path = plots_dir / "precision_recall_curve.png"
+        fig.savefig(path, dpi=160)
+        plt.close(fig)
+        saved_paths.append(path)
+
+    fig, axis = plt.subplots(figsize=(7, 5), constrained_layout=True)
+    axis.hist(y_prob[y_true == 0], bins=20, alpha=0.7, label="normal")
+    axis.hist(y_prob[y_true == 1], bins=20, alpha=0.7, label="high risk")
+    axis.axvline(threshold, color="black", linestyle="--", label="threshold")
+    axis.set_title("Predicted probability histogram")
+    axis.set_xlabel("predicted high-risk probability")
+    axis.set_ylabel("count")
+    axis.grid(True, alpha=0.3)
+    axis.legend()
+    path = plots_dir / "probability_histogram.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    saved_paths.append(path)
+
+    return saved_paths
+
+
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -216,15 +370,19 @@ def main() -> None:
 
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        train_metrics = evaluate(model, train_loader, criterion, device, args.threshold)
         val_metrics = evaluate(model, val_loader, criterion, device, args.threshold)
         history_row = {
             "epoch": epoch,
             "train_loss": train_loss,
+            **{f"train_{key}": value for key, value in train_metrics.items()},
             **{f"val_{key}": value for key, value in val_metrics.items()},
         }
+        history_row["train_loss"] = train_loss
         history.append(history_row)
         print(
             f"epoch {epoch:03d} | train_loss={train_loss:.4f} | "
+            f"train_f1={train_metrics['f1']:.4f} | "
             f"val_loss={val_metrics['loss']:.4f} | "
             f"val_f1={val_metrics['f1']:.4f} | val_auc={val_metrics['auc']:.4f}"
         )
@@ -257,6 +415,16 @@ def main() -> None:
     checkpoint = torch.load(best_model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     test_metrics = evaluate(model, test_loader, criterion, device, args.threshold)
+    y_test_true, y_test_prob = predict_probabilities(model, test_loader, device)
+    plot_paths = [plot_training_curves(history, output_dir)]
+    plot_paths.extend(
+        plot_test_classification_figures(
+            y_true=y_test_true,
+            y_prob=y_test_prob,
+            threshold=args.threshold,
+            output_dir=output_dir,
+        )
+    )
 
     metadata = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -272,6 +440,7 @@ def main() -> None:
         "best_epoch": best_epoch,
         "best_val_loss": best_val_loss,
         "test_metrics": test_metrics,
+        "plot_paths": [str(path) for path in plot_paths],
         "args": vars(args),
     }
     with (output_dir / "training_metadata.json").open("w", encoding="utf-8") as file:
@@ -280,6 +449,7 @@ def main() -> None:
         json.dump(history, file, ensure_ascii=False, indent=2)
 
     print(f"Best model saved to: {best_model_path}")
+    print(f"Plots saved to: {output_dir / 'plots'}")
     print(f"Test loss: {test_metrics['loss']:.4f}")
     print(f"Test F1: {test_metrics['f1']:.4f}")
     print(f"Test AUC: {test_metrics['auc']:.4f}")

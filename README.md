@@ -133,6 +133,10 @@ outputs/
     ├── vehicles_frame_risk_timeseries.csv
     ├── vehicles_pairwise_risk.csv
     ├── metadata.json
+    ├── plots/
+    │   ├── vehicle_kinematics_by_id.png
+    │   ├── vehicle_motion_components_by_id.png
+    │   └── region_risk_timeseries.png
     └── vehicles_annotated.mp4
 ```
 
@@ -185,12 +189,28 @@ rho(t) = ... veh/m^2
 max pair = i->j ...%
 ```
 
+分析结束后会自动生成车辆运动学可视化：
+
+- `vehicle_kinematics_by_id.png`：按车辆 ID 绘制轨迹、速度模长、加速度模长和航向角；
+- `vehicle_motion_components_by_id.png`：按车辆 ID 绘制 `v_ix/v_iy` 与 `a_ix/a_iy` 分量；
+- `region_risk_timeseries.png`：绘制各区域 `P_A(t)`、车流密度和最大车辆对风险。
+
+如果不需要保存图片，可添加：
+
+```powershell
+python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --no-plots
+```
+
 ## 5. 构建时序数据集
 
 `make_dataset.py` 读取 `*_frame_risk_timeseries.csv`，按 `video_id + region_id` 独立切分滑动窗口。
 
 ```powershell
 python make_dataset.py --input outputs --window-size 60 --horizon-size 60 --risk-threshold 0.7
+```
+也可以传入具体的时间戳目录: 
+```powershell
+python make_dataset.py --input outputs\20260722_230505_vehicles --window-size 60 --horizon-size 60 --risk-threshold 0.7
 ```
 
 默认输入特征：
@@ -252,10 +272,18 @@ trained_models/
 └── 20260722_170000_lstm_risk/
     ├── best_model.pt
     ├── training_history.json
+    ├── plots/
+    │   ├── training_curves.png
+    │   ├── confusion_matrix.png
+    │   ├── roc_curve.png
+    │   ├── precision_recall_curve.png
+    │   └── probability_histogram.png
     └── training_metadata.json
 ```
 
 `best_model.pt` 保存模型权重、模型结构参数、特征列、标准化均值和标准差。实时部署时必须使用相同特征顺序和标准化参数构造滑动窗口。
+
+训练可视化包括 loss、accuracy、precision、recall、F1、AUC、ROC、PR、混淆矩阵和测试集预测概率分布。
 
 ## 7. 项目结构
 

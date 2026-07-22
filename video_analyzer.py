@@ -9,9 +9,15 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
+import matplotlib
 import numpy as np
+import pandas as pd
 import supervision as sv
 from ultralytics import YOLO
+
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -218,6 +224,17 @@ def parse_arguments() -> argparse.Namespace:
         default=960,
         help="Preview window width in pixels.",
         type=int,
+    )
+    parser.add_argument(
+        "--plot-max-vehicles",
+        default=8,
+        help="Maximum number of vehicle IDs shown in kinematic plots.",
+        type=int,
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Disable analysis PNG visualizations.",
     )
     parser.add_argument(
         "--risk-alpha",
@@ -845,6 +862,162 @@ def draw_region_risk_blocks(
     return annotated_frame
 
 
+def read_numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(dtype=float)
+    return pd.to_numeric(df[column], errors="coerce")
+
+
+def select_vehicle_ids_for_plots(
+    tracks: pd.DataFrame,
+    max_vehicles: int,
+) -> list[int]:
+    if tracks.empty or max_vehicles <= 0:
+        return []
+    counts = tracks.groupby("vehicle_id")["frame_id"].count().sort_values(ascending=False)
+    return [int(vehicle_id) for vehicle_id in counts.head(max_vehicles).index]
+
+
+def plot_vehicle_kinematics(
+    track_csv_path: Path,
+    output_dir: Path,
+    max_vehicles: int,
+) -> list[Path]:
+    tracks = pd.read_csv(track_csv_path, encoding="utf-8-sig")
+    if tracks.empty:
+        return []
+
+    for column in [
+        "timestamp_s",
+        "vehicle_id",
+        "车辆横向位置x_i(t)（m）",
+        "车辆纵向位置y_i(t)（m）",
+        "车辆横向速度v_ix(t)（m/s）",
+        "车辆纵向速度v_iy(t)（m/s）",
+        "车辆横向加速度a_ix(t)（m/s^2）",
+        "车辆纵向加速度a_iy(t)（m/s^2）",
+        "车辆航向角theta_i(t)（rad）",
+    ]:
+        if column in tracks.columns:
+            tracks[column] = pd.to_numeric(tracks[column], errors="coerce")
+
+    vehicle_ids = select_vehicle_ids_for_plots(tracks, max_vehicles)
+    if not vehicle_ids:
+        return []
+
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    selected = tracks[tracks["vehicle_id"].isin(vehicle_ids)].copy()
+    selected = selected.sort_values(["vehicle_id", "timestamp_s"])
+
+    x_col = "车辆横向位置x_i(t)（m）"
+    y_col = "车辆纵向位置y_i(t)（m）"
+    vx_col = "车辆横向速度v_ix(t)（m/s）"
+    vy_col = "车辆纵向速度v_iy(t)（m/s）"
+    ax_col = "车辆横向加速度a_ix(t)（m/s^2）"
+    ay_col = "车辆纵向加速度a_iy(t)（m/s^2）"
+    theta_col = "车辆航向角theta_i(t)（rad）"
+
+    selected["speed_mps"] = np.hypot(selected[vx_col], selected[vy_col])
+    selected["acceleration_mps2"] = np.hypot(selected[ax_col], selected[ay_col])
+
+    saved_paths = []
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10), constrained_layout=True)
+    for vehicle_id, group in selected.groupby("vehicle_id"):
+        label = f"id {int(vehicle_id)}"
+        axes[0, 0].plot(group[x_col], group[y_col], marker=".", linewidth=1.2, label=label)
+        axes[0, 1].plot(group["timestamp_s"], group["speed_mps"], linewidth=1.2, label=label)
+        axes[1, 0].plot(group["timestamp_s"], group["acceleration_mps2"], linewidth=1.2, label=label)
+        axes[1, 1].plot(group["timestamp_s"], group[theta_col], linewidth=1.2, label=label)
+
+    axes[0, 0].set_title("Vehicle trajectories")
+    axes[0, 0].set_xlabel("x_i(t) / m")
+    axes[0, 0].set_ylabel("y_i(t) / m")
+    axes[0, 0].axis("equal")
+    axes[0, 1].set_title("Speed magnitude")
+    axes[0, 1].set_xlabel("time / s")
+    axes[0, 1].set_ylabel("speed / m/s")
+    axes[1, 0].set_title("Acceleration magnitude")
+    axes[1, 0].set_xlabel("time / s")
+    axes[1, 0].set_ylabel("acceleration / m/s^2")
+    axes[1, 1].set_title("Heading")
+    axes[1, 1].set_xlabel("time / s")
+    axes[1, 1].set_ylabel("theta / rad")
+    for axis in axes.ravel():
+        axis.grid(True, alpha=0.3)
+        axis.legend(fontsize=8)
+    path = plots_dir / "vehicle_kinematics_by_id.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    saved_paths.append(path)
+
+    fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True, constrained_layout=True)
+    for vehicle_id, group in selected.groupby("vehicle_id"):
+        label = f"id {int(vehicle_id)}"
+        axes[0].plot(group["timestamp_s"], group[vx_col], linewidth=1.1, label=f"{label} vx")
+        axes[0].plot(group["timestamp_s"], group[vy_col], linewidth=1.1, linestyle="--", label=f"{label} vy")
+        axes[1].plot(group["timestamp_s"], group[ax_col], linewidth=1.1, label=f"{label} ax")
+        axes[1].plot(group["timestamp_s"], group[ay_col], linewidth=1.1, linestyle="--", label=f"{label} ay")
+    axes[0].set_title("Velocity components")
+    axes[0].set_ylabel("velocity / m/s")
+    axes[1].set_title("Acceleration components")
+    axes[1].set_xlabel("time / s")
+    axes[1].set_ylabel("acceleration / m/s^2")
+    for axis in axes:
+        axis.grid(True, alpha=0.3)
+        axis.legend(fontsize=7, ncol=2)
+    path = plots_dir / "vehicle_motion_components_by_id.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    saved_paths.append(path)
+
+    return saved_paths
+
+
+def plot_region_risk_timeseries(
+    frame_risk_csv_path: Path,
+    output_dir: Path,
+) -> list[Path]:
+    frame_risk = pd.read_csv(frame_risk_csv_path, encoding="utf-8-sig")
+    if frame_risk.empty:
+        return []
+
+    for column in [
+        "timestamp_s",
+        "区域瞬时事故概率P_A(t)",
+        "车流密度rho(t)（veh/m^2）",
+        "区域车辆数N(t)",
+        "最大车辆对风险P_ij(t)",
+    ]:
+        if column in frame_risk.columns:
+            frame_risk[column] = pd.to_numeric(frame_risk[column], errors="coerce").fillna(0.0)
+
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True, constrained_layout=True)
+    for region_id, group in frame_risk.groupby("region_id"):
+        group = group.sort_values("timestamp_s")
+        axes[0].plot(group["timestamp_s"], group["区域瞬时事故概率P_A(t)"], label=region_id)
+        axes[1].plot(group["timestamp_s"], group["车流密度rho(t)（veh/m^2）"], label=region_id)
+        axes[2].plot(group["timestamp_s"], group["最大车辆对风险P_ij(t)"], label=region_id)
+
+    axes[0].set_title("Region instantaneous risk")
+    axes[0].set_ylabel("P_A(t)")
+    axes[1].set_title("Traffic density")
+    axes[1].set_ylabel("vehicles / m^2")
+    axes[2].set_title("Max pairwise risk")
+    axes[2].set_xlabel("time / s")
+    axes[2].set_ylabel("max P_ij(t)")
+    for axis in axes:
+        axis.grid(True, alpha=0.3)
+        axis.legend(fontsize=8)
+    path = plots_dir / "region_risk_timeseries.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return [path]
+
+
 def make_annotated_frame(
     frame: np.ndarray,
     detections: sv.Detections,
@@ -1255,10 +1428,28 @@ def main() -> None:
     if not args.no_show:
         cv2.destroyAllWindows()
 
+    plot_paths = []
+    if not args.no_plots:
+        plot_paths.extend(
+            plot_vehicle_kinematics(
+                track_csv_path=csv_path,
+                output_dir=output_dir,
+                max_vehicles=args.plot_max_vehicles,
+            )
+        )
+        plot_paths.extend(
+            plot_region_risk_timeseries(
+                frame_risk_csv_path=frame_risk_path,
+                output_dir=output_dir,
+            )
+        )
+
     print()
     print(f"CSV saved to: {csv_path}")
     print(f"Frame risk CSV saved to: {frame_risk_path}")
     print(f"Pairwise risk CSV saved to: {pairwise_risk_path}")
+    if plot_paths:
+        print(f"Plots saved to: {output_dir / 'plots'}")
     print(f"Output folder: {output_dir}")
 
 
