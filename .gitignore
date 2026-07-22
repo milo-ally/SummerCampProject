@@ -28,6 +28,7 @@ checkpoints/
 
 # Generated analysis outputs
 outputs/
+demo_outputs/
 datasets/
 trained_models/
 runs/

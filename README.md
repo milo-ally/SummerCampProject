@@ -285,7 +285,63 @@ trained_models/
 
 训练可视化包括 loss、accuracy、precision、recall、F1、AUC、ROC、PR、混淆矩阵和测试集预测概率分布。
 
-## 7. 项目结构
+## 7. 端到端推理 Demo
+
+`demo.py` 将完整串联：
+
+```text
+视频 -> YOLO 检测 -> ByteTrack 跟踪 -> 透视变换 -> 机理风险 P_A(t)
+     -> 滑动窗口 -> 时序模型 -> 未来风险概率
+```
+
+运行示例：
+
+```powershell
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt
+```
+
+无弹窗批处理：
+
+```powershell
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt --no-show
+```
+
+保存端到端标注视频：
+
+```powershell
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt --save-video
+```
+
+常用参数：
+
+- `--window-size`：时序模型输入窗口长度；默认优先读取训练目录中的 `training_metadata.json`；
+- `--threshold`：未来高风险报警阈值；默认读取模型 checkpoint 中的训练阈值；
+- `--device auto|cpu|cuda`：推理设备；
+- `--display-width`：预览窗口宽度；
+- `--risk-alpha`、`--risk-beta`、`--risk-horizon-seconds`、`--lateral-longitudinal-gate-m`：端到端推理时沿用的机理风险参数。
+
+输出目录示例：
+
+```text
+demo_outputs/
+└── 20260722_180000_vehicles_demo/
+    ├── vehicles_demo_predictions.csv
+    ├── vehicles_demo.mp4
+    └── demo_metadata.json
+```
+
+其中 `vehicles_demo_predictions.csv` 每帧每区域输出：
+
+```text
+instant_risk_P_A_t
+future_risk_probability
+alert
+window_ready
+```
+
+画面中同时显示当前机理风险 `P_A(t)` 和时序模型预测的未来风险概率 `future Y`。
+
+## 8. 项目结构
 
 ```text
 .
@@ -293,6 +349,7 @@ trained_models/
 ├── video_analyzer.py
 ├── make_dataset.py
 ├── train.py
+├── demo.py
 ├── models/
 │   ├── __init__.py
 │   ├── rnn.py
@@ -302,13 +359,14 @@ trained_models/
 ├── data/
 ├── checkpoints/
 ├── outputs/
+├── demo_outputs/
 ├── datasets/
 └── trained_models/
 ```
 
-## 8. 注意事项
+## 9. 注意事项
 
-- `checkpoints/`、`outputs/`、`datasets/`、`trained_models/` 和视频文件默认不纳入 Git；
+- `checkpoints/`、`outputs/`、`demo_outputs/`、`datasets/`、`trained_models/` 和视频文件默认不纳入 Git；
 - 标定 JSON 可以提交，便于复现实验；
 - 当前训练标签是基于未来机理风险阈值构造的弱监督标签；
 - 后续如果有真实事故、近碰、急刹或人工高危标注，应替换弱标签，升级为真实事故概率预测；
