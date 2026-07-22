@@ -194,45 +194,75 @@ def draw_temporal_prediction_blocks(
 ) -> np.ndarray:
     annotated = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.65
-    thickness = 2
-    padding = 8
-    line_height = 22
+    frame_height, frame_width = annotated.shape[:2]
+    font_scale = max(0.95, min(frame_width / 1100.0, 1.35))
+    small_font_scale = font_scale * 0.72
+    thickness = max(2, int(round(font_scale * 2.4)))
+    padding_x = int(round(14 * font_scale))
+    padding_y = int(round(10 * font_scale))
+    line_gap = int(round(10 * font_scale))
 
     for region in regions:
         polygon = region.source_polygon
-        anchor_x = int(np.max(polygon[:, 0]))
+        anchor_x = int(np.mean(polygon[:, 0]))
         anchor_y = int(np.min(polygon[:, 1]))
         probability = predictions.get(region.region_id)
         if probability is None:
-            line = f"{region.region_id} pred Y = warming up"
+            title_line = f"{region.region_id} FUTURE RISK"
+            value_line = "warming up"
             color = (70, 70, 70)
         else:
             status = "HIGH" if probability >= threshold else "normal"
-            line = f"{region.region_id} future Y = {probability * 100:.1f}% {status}"
+            title_line = f"{region.region_id} FUTURE RISK"
+            value_line = f"Y = {probability * 100:.1f}%  {status}"
             color = (35, 35, 220) if probability >= threshold else (45, 130, 45)
 
-        (text_width, text_height), _ = cv2.getTextSize(
-            line,
+        (title_width, title_height), _ = cv2.getTextSize(
+            title_line,
+            font,
+            small_font_scale,
+            thickness,
+        )
+        (value_width, value_height), _ = cv2.getTextSize(
+            value_line,
             font,
             font_scale,
             thickness,
         )
-        panel_width = text_width + padding * 2
-        panel_height = line_height + padding * 2
-        panel_x1 = max(0, min(anchor_x - panel_width, annotated.shape[1] - panel_width - 1))
-        panel_y1 = max(0, min(anchor_y + 6, annotated.shape[0] - panel_height - 1))
+        panel_width = max(title_width, value_width) + padding_x * 2
+        panel_height = title_height + value_height + line_gap + padding_y * 2
+        panel_x1 = max(0, min(anchor_x - panel_width // 2, frame_width - panel_width - 1))
+        panel_y1 = max(0, min(anchor_y + 30, frame_height - panel_height - 1))
         panel_x2 = panel_x1 + panel_width
         panel_y2 = panel_y1 + panel_height
 
         overlay = annotated.copy()
         cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), color, -1)
-        cv2.addWeighted(overlay, 0.72, annotated, 0.28, 0, annotated)
-        cv2.rectangle(annotated, (panel_x1, panel_y1), (panel_x2, panel_y2), (255, 255, 255), 1)
+        cv2.addWeighted(overlay, 0.82, annotated, 0.18, 0, annotated)
+        cv2.rectangle(
+            annotated,
+            (panel_x1, panel_y1),
+            (panel_x2, panel_y2),
+            (255, 255, 255),
+            2,
+        )
         cv2.putText(
             annotated,
-            line,
-            (panel_x1 + padding, panel_y1 + padding + text_height),
+            title_line,
+            (panel_x1 + padding_x, panel_y1 + padding_y + title_height),
+            font,
+            small_font_scale,
+            (255, 255, 255),
+            thickness,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            annotated,
+            value_line,
+            (
+                panel_x1 + padding_x,
+                panel_y1 + padding_y + title_height + line_gap + value_height,
+            ),
             font,
             font_scale,
             (255, 255, 255),

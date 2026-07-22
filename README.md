@@ -297,19 +297,19 @@ trained_models/
 运行示例：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt
 ```
 
 无弹窗批处理：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt --no-show
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt --no-show
 ```
 
 保存端到端标注视频：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260722_170000_lstm_risk\best_model.pt --save-video
+python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt --save-video
 ```
 
 常用参数：
