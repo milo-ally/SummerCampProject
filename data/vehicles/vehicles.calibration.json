@@ -1,0 +1,134 @@
+{
+  "source_video_path": "D:\\workplace\\Mission3\\Project\\data\\vehicles.mp4",
+  "frame_index": 0,
+  "source": [
+    [
+      1252.397,
+      789.71
+    ],
+    [
+      1717.891,
+      782.968
+    ],
+    [
+      1847.83,
+      1303.069
+    ],
+    [
+      557.826,
+      1316.375
+    ]
+  ],
+  "target": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      20.0,
+      0.0
+    ],
+    [
+      20.0,
+      200.0
+    ],
+    [
+      0.0,
+      200.0
+    ]
+  ],
+  "target_width_m": 20.0,
+  "target_length_m": 200.0,
+  "regions": [
+    {
+      "region_id": "region_1",
+      "name": "研究区域1",
+      "source": [
+        [
+          1252.397,
+          789.71
+        ],
+        [
+          1717.891,
+          782.968
+        ],
+        [
+          1847.83,
+          1303.069
+        ],
+        [
+          557.826,
+          1316.375
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          20.0,
+          0.0
+        ],
+        [
+          20.0,
+          200.0
+        ],
+        [
+          0.0,
+          200.0
+        ]
+      ],
+      "target_width_m": 20.0,
+      "target_length_m": 200.0
+    },
+    {
+      "region_id": "region_2",
+      "name": "研究区域2",
+      "source": [
+        [
+          1851.97,
+          784.349
+        ],
+        [
+          2297.204,
+          802.343
+        ],
+        [
+          3351.74,
+          1294.308
+        ],
+        [
+          2142.545,
+          1301.867
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          20.0,
+          0.0
+        ],
+        [
+          20.0,
+          200.0
+        ],
+        [
+          0.0,
+          200.0
+        ]
+      ],
+      "target_width_m": 20.0,
+      "target_length_m": 200.0
+    }
+  ],
+  "distance_annotations": [],
+  "notes": {
+    "regions": "Each region is independently ordered as top-left, top-right, bottom-right, bottom-left at export time.",
+    "source": "Legacy alias for the first region.",
+    "target": "Road-plane coordinates in meters."
+  }
+}

@@ -1,5 +1,47 @@
-.agents 
-.vscode 
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Model weights and large runtime artifacts
 checkpoints/
-data/
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Generated analysis outputs
 outputs/
+datasets/
+trained_models/
+runs/
+logs/
+
+# Local videos and media; keep calibration JSON files trackable
+data/**/*.mp4
+data/**/*.avi
+data/**/*.mov
+data/**/*.mkv
+data/**/*.webm
+
+# Generated tabular/model artifacts outside managed output folders
+*.npz
+*.joblib
+*.pkl
+

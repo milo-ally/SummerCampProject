@@ -1,9 +1,0 @@
-data/
-venv*/
-*.pt
-*.pth
-*.mp4
-*.mov
-*.png
-*.jpg
-*.jpeg

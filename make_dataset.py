@@ -9,123 +9,94 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "datasets"
 DEFAULT_INPUT_ROOT = PROJECT_ROOT / "outputs"
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "datasets"
+
+DEFAULT_FEATURE_COLUMNS = [
+    "区域瞬时事故概率P_A(t)",
+    "车流密度rho(t)（veh/m^2）",
+    "区域车辆数N(t)",
+    "有效风险车辆数",
+    "最大单车风险P_i(t)",
+    "最大车辆对风险P_ij(t)",
+    "risk_type_long",
+    "risk_type_lat",
+]
 
 NUMERIC_COLUMNS = [
     "frame_id",
     "timestamp_s",
-    "vehicle_id",
-    "bbox_x1",
-    "bbox_y1",
-    "bbox_x2",
-    "bbox_y2",
-    "confidence",
-    "image_anchor_x",
-    "image_anchor_y",
-    "road_x_m",
-    "road_y_m",
-    "distance_to_stopline_m",
-    "speed_mps",
-    "speed_kmh",
-    "smoothed_speed_mps",
-    "acceleration_mps2",
-    "speed_window_s",
-]
-
-COMFORT_DECEL_MPS2 = {
-    "car": 3.0,
-    "motorcycle": 3.2,
-    "bus": 2.0,
-    "truck": 1.8,
-    "other_vehicle": 2.5,
-}
-
-FEATURE_COLUMNS = [
-    "vehicle_type",
-    "timestamp_s",
-    "track_age_s",
-    "track_age_frames",
-    "road_x_m",
-    "road_y_m",
-    "distance_to_stopline_m",
-    "speed_mps",
-    "speed_kmh",
-    "smoothed_speed_mps",
-    "acceleration_mps2",
-    "delta_speed_mps",
-    "bbox_width",
-    "bbox_height",
-    "bbox_area",
-    "bbox_aspect_ratio",
-    "confidence",
-    "red_light_phase",
-    "in_observation_zone",
+    "区域车辆数N(t)",
+    "有效风险车辆数",
+    "研究区域面积S_A（m^2）",
+    "车流密度rho(t)（veh/m^2）",
+    "区域瞬时事故概率P_A(t)",
+    "最大单车风险P_i(t)",
+    "最大车辆对风险P_ij(t)",
 ]
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Clean raw vehicle track CSV files and build an ML dataset."
+        description="Build sliding-window sequence datasets from frame risk CSV files."
     )
     parser.add_argument(
         "--input",
         nargs="+",
         default=[str(DEFAULT_INPUT_ROOT)],
-        help="Raw CSV files or directories containing *_vehicle_tracks.csv files.",
+        help="CSV files or directories containing *_frame_risk_timeseries.csv files.",
     )
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Dataset output directory. Defaults to datasets/<timestamp>_dataset.",
+        help="Dataset output directory. Defaults to datasets/<timestamp>_risk_sequence.",
     )
     parser.add_argument(
-        "--stopline-road-y-m",
-        default=None,
-        type=float,
-        help="Optional stop line y-coordinate used when raw CSV has no distance column.",
-    )
-    parser.add_argument(
-        "--min-track-points",
-        default=8,
+        "--window-size",
+        default=60,
         type=int,
-        help="Drop vehicle tracks shorter than this many rows.",
+        help="Number of past frames in each input sequence.",
     )
     parser.add_argument(
-        "--min-confidence",
-        default=0.25,
-        type=float,
-        help="Drop detections below this confidence.",
+        "--horizon-size",
+        default=60,
+        type=int,
+        help="Number of future frames used to build the prediction label.",
     )
     parser.add_argument(
-        "--max-speed-mps",
-        default=45.0,
+        "--risk-threshold",
+        default=0.7,
         type=float,
-        help="Drop physically implausible speeds above this value.",
+        help="Weak label threshold for future max P_A(t).",
     )
     parser.add_argument(
-        "--max-abs-acceleration-mps2",
-        default=12.0,
-        type=float,
-        help="Drop physically implausible absolute accelerations above this value.",
+        "--stride",
+        default=1,
+        type=int,
+        help="Sliding-window stride in frames.",
     )
     parser.add_argument(
-        "--reaction-time-s",
-        default=1.0,
+        "--val-ratio",
+        default=0.15,
         type=float,
-        help="Reaction time used for weak physical labels.",
+        help="Validation split ratio.",
     )
     parser.add_argument(
-        "--buffer-distance-m",
-        default=3.0,
+        "--test-ratio",
+        default=0.15,
         type=float,
-        help="Safety buffer used for weak physical labels.",
+        help="Test split ratio.",
     )
     parser.add_argument(
-        "--warning-margin-m",
-        default=8.0,
-        type=float,
-        help="Distance margin for weak Warning labels before the brake boundary.",
+        "--random-state",
+        default=42,
+        type=int,
+        help="Random seed used when shuffling sequences.",
+    )
+    parser.add_argument(
+        "--no-shuffle",
+        action="store_true",
+        help="Keep chronological order before splitting.",
     )
     return parser.parse_args()
 
@@ -146,14 +117,13 @@ def resolve_input_paths(paths: list[str]) -> list[Path]:
         if path.is_file():
             csv_paths.append(path)
         elif path.is_dir():
-            csv_paths.extend(sorted(path.rglob("*_vehicle_tracks.csv")))
-            csv_paths.extend(sorted(path.rglob("*.csv")))
+            csv_paths.extend(sorted(path.rglob("*_frame_risk_timeseries.csv")))
         else:
             raise FileNotFoundError(f"Input path not found: {path}")
 
     unique_paths = sorted({path.resolve() for path in csv_paths})
     if not unique_paths:
-        raise FileNotFoundError("No CSV files found in the input paths.")
+        raise FileNotFoundError("No *_frame_risk_timeseries.csv files found.")
     return unique_paths
 
 
@@ -162,12 +132,12 @@ def create_output_dir(output_dir_text: str | None) -> Path:
         output_dir = Path(output_dir_text)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = DEFAULT_OUTPUT_ROOT / f"{timestamp}_dataset"
+        output_dir = DEFAULT_OUTPUT_ROOT / f"{timestamp}_risk_sequence"
     output_dir.mkdir(parents=True, exist_ok=False)
     return output_dir
 
 
-def read_raw_csvs(csv_paths: list[Path]) -> pd.DataFrame:
+def read_frame_risk_csvs(csv_paths: list[Path]) -> pd.DataFrame:
     frames = []
     for csv_path in csv_paths:
         frame = pd.read_csv(csv_path, encoding="utf-8-sig")
@@ -176,164 +146,211 @@ def read_raw_csvs(csv_paths: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def normalize_booleans(series: pd.Series) -> pd.Series:
-    return (
-        series.astype(str)
-        .str.lower()
-        .map({"true": 1, "1": 1, "yes": 1, "false": 0, "0": 0, "no": 0})
-        .fillna(0)
-        .astype(int)
-    )
-
-
-def clean_raw_tracks(df: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
+def clean_frame_risk(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for column in NUMERIC_COLUMNS:
         if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
 
-    for column in ["red_light_phase", "in_observation_zone"]:
-        if column in df.columns:
-            df[column] = normalize_booleans(df[column])
-        else:
-            df[column] = 0
-
-    if "vehicle_type" not in df.columns:
-        df["vehicle_type"] = "other_vehicle"
-    df["vehicle_type"] = df["vehicle_type"].fillna("other_vehicle").astype(str)
-
     required = [
         "video_id",
         "frame_id",
         "timestamp_s",
-        "vehicle_id",
-        "vehicle_type",
-        "road_x_m",
-        "road_y_m",
-        "speed_mps",
-        "smoothed_speed_mps",
-        "acceleration_mps2",
+        "region_id",
+        "区域瞬时事故概率P_A(t)",
     ]
-    df = df.dropna(subset=[column for column in required if column in df.columns])
+    missing = [column for column in required if column not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required frame risk columns: {missing}")
 
-    if "confidence" in df.columns:
-        df = df[df["confidence"] >= args.min_confidence]
-    df = df[(df["speed_mps"] >= 0) & (df["speed_mps"] <= args.max_speed_mps)]
-    df = df[df["acceleration_mps2"].abs() <= args.max_abs_acceleration_mps2]
+    df["region_name"] = df.get("region_name", df["region_id"]).fillna(df["region_id"])
+    df["最大风险类型"] = df.get("最大风险类型", "").fillna("").astype(str)
+    df["risk_type_long"] = (df["最大风险类型"] == "long").astype(float)
+    df["risk_type_lat"] = (df["最大风险类型"] == "lat").astype(float)
 
-    if "distance_to_stopline_m" not in df.columns:
-        df["distance_to_stopline_m"] = np.nan
-    if args.stopline_road_y_m is not None:
-        missing_distance = df["distance_to_stopline_m"].isna()
-        df.loc[missing_distance, "distance_to_stopline_m"] = (
-            df.loc[missing_distance, "road_y_m"] - args.stopline_road_y_m
-        ).abs()
+    for column in DEFAULT_FEATURE_COLUMNS:
+        if column not in df.columns:
+            df[column] = 0.0
+        df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0)
 
-    df = df.sort_values(["video_id", "vehicle_id", "timestamp_s", "frame_id"])
-    track_sizes = df.groupby(["video_id", "vehicle_id"])["frame_id"].transform("count")
-    df = df[track_sizes >= args.min_track_points].copy()
+    df = df.dropna(subset=required)
+    df = df.sort_values(["source_csv", "video_id", "region_id", "frame_id"])
     return df.reset_index(drop=True)
 
 
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    grouped = df.groupby(["video_id", "vehicle_id"], sort=False)
+def split_indices(
+    sample_count: int,
+    val_ratio: float,
+    test_ratio: float,
+    random_state: int,
+    shuffle: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    indices = np.arange(sample_count)
+    if shuffle:
+        rng = np.random.default_rng(random_state)
+        rng.shuffle(indices)
 
-    df["track_age_s"] = grouped["timestamp_s"].transform(lambda s: s - s.min())
-    df["track_age_frames"] = grouped.cumcount()
-    df["delta_speed_mps"] = grouped["smoothed_speed_mps"].diff().fillna(0.0)
+    test_count = int(round(sample_count * test_ratio))
+    val_count = int(round(sample_count * val_ratio))
+    train_count = sample_count - val_count - test_count
+    if train_count <= 0:
+        raise ValueError("Not enough sequences for the requested split ratios.")
 
-    df["bbox_width"] = (df["bbox_x2"] - df["bbox_x1"]).clip(lower=0)
-    df["bbox_height"] = (df["bbox_y2"] - df["bbox_y1"]).clip(lower=0)
-    df["bbox_area"] = df["bbox_width"] * df["bbox_height"]
-    df["bbox_aspect_ratio"] = df["bbox_width"] / df["bbox_height"].replace(0, np.nan)
-    df["bbox_aspect_ratio"] = df["bbox_aspect_ratio"].replace([np.inf, -np.inf], np.nan)
-    df["bbox_aspect_ratio"] = df["bbox_aspect_ratio"].fillna(0.0)
-    return df
+    train_idx = indices[:train_count]
+    val_idx = indices[train_count : train_count + val_count]
+    test_idx = indices[train_count + val_count :]
+    return train_idx, val_idx, test_idx
 
 
-def add_weak_brake_labels(df: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
-    df = df.copy()
-    comfort_decel = df["vehicle_type"].map(COMFORT_DECEL_MPS2).fillna(
-        COMFORT_DECEL_MPS2["other_vehicle"]
-    )
-    speed = df["smoothed_speed_mps"].fillna(df["speed_mps"]).clip(lower=0)
-    df["comfort_deceleration_mps2"] = comfort_decel
-    df["required_braking_distance_m"] = (
-        speed.pow(2) / (2 * comfort_decel)
-        + speed * args.reaction_time_s
-        + args.buffer_distance_m
-    )
+def build_sequences(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    window_size: int,
+    horizon_size: int,
+    risk_threshold: float,
+    stride: int,
+) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
+    sequences = []
+    labels = []
+    rows = []
 
-    df["latest_brake_line_m"] = np.nan
-    if args.stopline_road_y_m is not None:
-        df["latest_brake_line_m"] = (
-            args.stopline_road_y_m - df["required_braking_distance_m"]
+    group_columns = ["source_csv", "video_id", "region_id"]
+    for (source_csv, video_id, region_id), group in df.groupby(group_columns, sort=False):
+        group = group.sort_values("frame_id").reset_index(drop=True)
+        features = group[feature_columns].to_numpy(dtype=np.float32)
+        risk_values = group["区域瞬时事故概率P_A(t)"].to_numpy(dtype=np.float32)
+        max_start = len(group) - window_size - horizon_size + 1
+        if max_start <= 0:
+            continue
+
+        for start in range(0, max_start, stride):
+            end = start + window_size
+            future_end = end + horizon_size
+            future_max_risk = float(np.max(risk_values[end:future_end]))
+            label = float(future_max_risk >= risk_threshold)
+            sequences.append(features[start:end])
+            labels.append(label)
+            rows.append(
+                {
+                    "sample_id": len(rows),
+                    "source_csv": source_csv,
+                    "video_id": video_id,
+                    "region_id": region_id,
+                    "start_frame": int(group.loc[start, "frame_id"]),
+                    "end_frame": int(group.loc[end - 1, "frame_id"]),
+                    "label_start_frame": int(group.loc[end, "frame_id"]),
+                    "label_end_frame": int(group.loc[future_end - 1, "frame_id"]),
+                    "end_timestamp_s": float(group.loc[end - 1, "timestamp_s"]),
+                    "future_max_risk": future_max_risk,
+                    "label": label,
+                }
+            )
+
+    if not sequences:
+        raise ValueError(
+            "No sequences were created. Try reducing --window-size or --horizon-size."
         )
 
-    distance = df["distance_to_stopline_m"]
-    crossed = distance.notna() & (distance <= df["required_braking_distance_m"])
-    warning = distance.notna() & (
-        distance <= df["required_braking_distance_m"] + args.warning_margin_m
+    return (
+        np.stack(sequences).astype(np.float32),
+        np.array(labels, dtype=np.float32),
+        pd.DataFrame(rows),
     )
-    decelerating = df["acceleration_mps2"] < -1.0
-
-    df["brake_boundary_crossed"] = crossed.astype(int)
-    df["risk_level_weak"] = "Normal"
-    df.loc[warning & ~crossed & ~decelerating, "risk_level_weak"] = "Warning"
-    df.loc[crossed & ~decelerating, "risk_level_weak"] = "High Risk"
-    return df
 
 
-def write_outputs(
-    dataset: pd.DataFrame,
-    raw_count: int,
-    csv_paths: list[Path],
+def standardize_by_train(
+    X: np.ndarray,
+    train_idx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    train_values = X[train_idx].reshape(-1, X.shape[-1])
+    mean = train_values.mean(axis=0).astype(np.float32)
+    std = train_values.std(axis=0).astype(np.float32)
+    std = np.where(std < 1e-6, 1.0, std).astype(np.float32)
+    return ((X - mean) / std).astype(np.float32), mean, std
+
+
+def save_split(
     output_dir: Path,
-    args: argparse.Namespace,
+    split_name: str,
+    X: np.ndarray,
+    y: np.ndarray,
+    index_df: pd.DataFrame,
+    indices: np.ndarray,
 ) -> None:
-    dataset_path = output_dir / "dataset.csv"
-    dataset.to_csv(dataset_path, index=False, encoding="utf-8-sig")
+    np.savez_compressed(
+        output_dir / f"{split_name}.npz",
+        X=X[indices],
+        y=y[indices],
+        sample_id=index_df.iloc[indices]["sample_id"].to_numpy(dtype=np.int64),
+    )
 
-    feature_columns_path = output_dir / "feature_columns.json"
-    with feature_columns_path.open("w", encoding="utf-8") as file:
-        json.dump(FEATURE_COLUMNS, file, ensure_ascii=False, indent=2)
+
+def main() -> None:
+    args = parse_arguments()
+    if args.window_size <= 0 or args.horizon_size <= 0 or args.stride <= 0:
+        raise ValueError("window-size, horizon-size and stride must be positive.")
+    if args.val_ratio < 0 or args.test_ratio < 0 or args.val_ratio + args.test_ratio >= 1:
+        raise ValueError("Split ratios must be non-negative and sum to less than 1.")
+
+    csv_paths = resolve_input_paths(args.input)
+    output_dir = create_output_dir(args.output_dir)
+
+    raw_df = read_frame_risk_csvs(csv_paths)
+    frame_risk = clean_frame_risk(raw_df)
+    feature_columns = [column for column in DEFAULT_FEATURE_COLUMNS if column in frame_risk.columns]
+    X, y, index_df = build_sequences(
+        df=frame_risk,
+        feature_columns=feature_columns,
+        window_size=args.window_size,
+        horizon_size=args.horizon_size,
+        risk_threshold=args.risk_threshold,
+        stride=args.stride,
+    )
+
+    train_idx, val_idx, test_idx = split_indices(
+        sample_count=len(y),
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+        random_state=args.random_state,
+        shuffle=not args.no_shuffle,
+    )
+    X, mean, std = standardize_by_train(X, train_idx)
+
+    save_split(output_dir, "train", X, y, index_df, train_idx)
+    save_split(output_dir, "val", X, y, index_df, val_idx)
+    save_split(output_dir, "test", X, y, index_df, test_idx)
+    index_df.to_csv(output_dir / "sequence_index.csv", index=False, encoding="utf-8-sig")
+
+    with (output_dir / "feature_columns.json").open("w", encoding="utf-8") as file:
+        json.dump(feature_columns, file, ensure_ascii=False, indent=2)
 
     metadata = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "input_csvs": [str(path) for path in csv_paths],
-        "raw_rows": raw_count,
-        "dataset_rows": int(len(dataset)),
-        "vehicle_tracks": int(
-            dataset.groupby(["video_id", "vehicle_id"]).ngroups
-            if not dataset.empty
-            else 0
-        ),
-        "feature_columns": FEATURE_COLUMNS,
-        "default_target_column": "required_braking_distance_m",
+        "raw_rows": int(len(raw_df)),
+        "frame_risk_rows": int(len(frame_risk)),
+        "samples": int(len(y)),
+        "positive_samples": int(y.sum()),
+        "negative_samples": int(len(y) - y.sum()),
+        "window_size": args.window_size,
+        "horizon_size": args.horizon_size,
+        "risk_threshold": args.risk_threshold,
+        "feature_columns": feature_columns,
+        "feature_mean": mean.tolist(),
+        "feature_std": std.tolist(),
+        "splits": {
+            "train": int(len(train_idx)),
+            "val": int(len(val_idx)),
+            "test": int(len(test_idx)),
+        },
         "args": vars(args),
     }
     with (output_dir / "dataset_metadata.json").open("w", encoding="utf-8") as file:
         json.dump(metadata, file, ensure_ascii=False, indent=2)
 
-
-def main() -> None:
-    args = parse_arguments()
-    csv_paths = resolve_input_paths(args.input)
-    output_dir = create_output_dir(args.output_dir)
-
-    raw_tracks = read_raw_csvs(csv_paths)
-    cleaned = clean_raw_tracks(raw_tracks, args)
-    dataset = add_features(cleaned)
-    dataset = add_weak_brake_labels(dataset, args)
-    dataset = dataset.dropna(subset=["required_braking_distance_m"]).reset_index(
-        drop=True
-    )
-
-    write_outputs(dataset, len(raw_tracks), csv_paths, output_dir, args)
-    print(f"Dataset saved to: {output_dir / 'dataset.csv'}")
-    print(f"Rows: {len(dataset)}")
-    print(f"Output folder: {output_dir}")
+    print(f"Sequence dataset saved to: {output_dir}")
+    print(f"Samples: {len(y)} | positives: {int(y.sum())} | features: {len(feature_columns)}")
+    print(f"Train/val/test: {len(train_idx)}/{len(val_idx)}/{len(test_idx)}")
 
 
 if __name__ == "__main__":

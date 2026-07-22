@@ -3,42 +3,6 @@ opencv-python
 pandas
 scikit-learn
 joblib
-
-
-# TARGET_WIDTH = 25 # meters
-# TARGET_HEIGHT = 250 # meters
-
-# # Use the source calibratioin tool to get: SOURCE
-# SOURCE = np.array(
-#     [
-#         [888, 1077],
-#         [2856, 1059],
-#         [4509, 2142],
-#         [-513, 2169]
-#     ]
-# )
-
-# # needs measurements in real world
-# TARGET = np.array(
-#     [
-#         [0, 0], 
-#         [TARGET_WIDTH - 1, 0], 
-#         [TARGET_WIDTH - 1, TARGET_HEIGHT - 1], 
-#         [0, TARGET_HEIGHT - 1] 
-#     ]
-# ) 
-
-# 完整流程:
-# cd D:\workplace\Mission3\Project
-# conda activate project
-# 视频分析，生成原始轨迹 CSV：
-# python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --stopline-road-y-m 249
-# 清洗数据并生成数据集：
-# python make_dataset.py --input outputs --stopline-road-y-m 249
-# 训练模型：
-# python train.py --dataset-path datasets\你的数据集目录\dataset.csv
-# 我也用现有 outputs 做了验证：
-# make_dataset.py 成功生成 452 行清洗样本
-# train.py 成功训练模型
-# 验证模型输出在 Project\models\codex_verify_model_2
-# 语法检查通过：video_analyzer.py、make_dataset.py、train.py
+supervision==0.29.1
+PySide6
+torch

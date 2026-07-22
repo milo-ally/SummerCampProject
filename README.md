@@ -1,63 +1,94 @@
-# SOP
+# 路段动态风险实时预判项目
+
+本项目实现《融合前端机器视觉与机理耦合时序网络的路段动态风险实时预判研究》的工程主线：
+
+```text
+视频输入 -> 区域标定 -> YOLO 检测 -> ByteTrack 跟踪 -> 透视变换测量
+       -> 机理瞬时风险 P_A(t) -> 时序数据集 -> RNN/LSTM/Transformer/Mamba 风险预测
+```
+
+核心车辆状态向量为：
+
+```text
+o_i(t) = [x_i(t), y_i(t), v_ix(t), v_iy(t), a_ix(t), a_iy(t), theta_i(t), c_i]
+```
+
+其中位置单位为 `m`，速度单位为 `m/s`，加速度单位为 `m/s^2`，航向角单位为 `rad`。
 
 ## 1. 环境准备
-
-进入项目目录并激活已经配置好的 conda 环境：
 
 ```powershell
 cd D:\workplace\Mission3\Project
 conda activate project
-```
-
-确认依赖可用：
-
-```powershell
-python -c "import cv2, pandas, sklearn, supervision; from ultralytics import YOLO; print('env ok')"
-```
-
-如需补装依赖：
-
-```powershell
 python -m pip install -r requirements.txt
 ```
 
-`supervision` 建议使用本地源码可编辑安装：
+确认核心依赖：
 
 ```powershell
-cd D:\workplace\Mission3\Project\supervision
-python -m pip install -e .
-cd D:\workplace\Mission3\Project
+python -c "import cv2, numpy, pandas, supervision, torch; from ultralytics import YOLO; print('env ok')"
 ```
 
-YOLO 权重统一放在：
+YOLO 权重放在：
 
 ```text
-Project/checkpoints/yolov8x.pt
+checkpoints/yolov8x.pt
 ```
 
-## 2. 准备视频和标定文件
-
-测试视频：
+如果没有测试视频，可下载：
 
 ```text
-Project/data/vehicles.mp4
+https://media.roboflow.com/supervision/video-examples/vehicles.mp4
 ```
 
-标定文件：
+建议保存为：
 
 ```text
-Project/data/vehicles/vehicles.calibration.json
+data/vehicles.mp4
 ```
 
-如果需要重新标定道路四边形：
+## 2. 标定研究区域
+
+启动标注软件：
 
 ```powershell
-python source_calibration_tool/calibrate_source.py --source-video-path data\vehicles.mp4 --display-width 1280 --padding 300
+python labeling.py
 ```
 
-## 3. 第一步：分析单个视频
+标注软件支持：
 
-`video_analyzer.py` 负责车辆检测、ID 分配、透视变换、速度/加速度估计、默认弹窗预览和原始轨迹 CSV 输出。
+- 选择视频并自动抽取有效帧；
+- 后台解析并显示进度百分比；
+- 画布自动适配窗口，支持 `Fit Frame` 和 `Ctrl + 鼠标滚轮` 缩放；
+- 新增、删除、命名多个研究区域；
+- 每个区域独立设置真实宽度和长度；
+- 拖动四边形控制点完成道路区域标定；
+- 鼠标拉线标注参考距离；
+- 导出兼容 `video_analyzer.py` 的标定 JSON。
+
+标定文件示例：
+
+```json
+{
+  "source": [[0, 0], [100, 0], [100, 100], [0, 100]],
+  "target": [[0, 0], [25, 0], [25, 125], [0, 125]],
+  "regions": [
+    {
+      "region_id": "region_1",
+      "name": "region_1",
+      "source": [[0, 0], [100, 0], [100, 100], [0, 100]],
+      "target": [[0, 0], [25, 0], [25, 125], [0, 125]],
+      "target_width_m": 25.0,
+      "target_length_m": 125.0
+    }
+  ],
+  "distance_annotations": []
+}
+```
+
+`regions` 可包含多个感兴趣区域。每个区域都有独立透视变换矩阵，因此可适配鸟瞰、街角监控、斜向道路等不同视角。顶层 `source` 和 `target` 是第一个区域的兼容字段。
+
+## 3. 分析视频并计算机理风险
 
 默认弹窗运行：
 
@@ -65,119 +96,192 @@ python source_calibration_tool/calibrate_source.py --source-video-path data\vehi
 python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json
 ```
 
-不弹窗，只生成 CSV：
+无弹窗批处理：
 
 ```powershell
 python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --no-show
 ```
 
-同时保存标注视频：
+保存标注视频：
 
 ```powershell
 python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --save-annotated-video
 ```
 
-如果已知停止线在道路坐标中的 y 值，例如 `249`：
+关键风险参数：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --stopline-road-y-m 249
+python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --risk-alpha 1.5 --risk-beta 1.0 --risk-horizon-seconds 10 --lateral-longitudinal-gate-m 12
 ```
 
-输出目录会自动包含日期时间戳和原视频文件名：
+参数含义：
+
+- `--risk-alpha`：纵向追尾 TTC 风险时间衰减尺度，单位 `s`；
+- `--risk-beta`：侧向擦碰 LTTC 风险时间衰减尺度，单位 `s`；
+- `--risk-horizon-seconds`：超过该时间的 TTC/LTTC 不计为即时冲突；
+- `--lateral-longitudinal-gate-m`：只有两车纵向距离小于该阈值时才计算侧向擦碰风险；
+- `--anchor CENTER`：默认使用检测框中心点代表车辆位置，减小框底抖动影响。
+
+当前风险概率使用带时域截断的指数衰减映射，避免原始 Sigmoid 形式对所有有限 TTC 都给出 0.5 以上概率造成虚高。
+
+分析输出目录示例：
 
 ```text
 outputs/
 └── 20260722_153012_vehicles/
     ├── vehicles_vehicle_tracks.csv
+    ├── vehicles_frame_risk_timeseries.csv
+    ├── vehicles_pairwise_risk.csv
     ├── metadata.json
     └── vehicles_annotated.mp4
 ```
 
-## 4. 第二步：清洗数据并生成数据集
+## 4. 输出字段
 
-`make_dataset.py` 读取一个或多个 `*_vehicle_tracks.csv`，完成数据清洗、特征工程和弱标签生成。
+`vehicles_vehicle_tracks.csv` 前 8 列严格对应状态向量：
 
-它会处理：
-
-- 数值字段转换；
-- 低置信度检测过滤；
-- 过短车辆轨迹过滤；
-- 异常速度和异常加速度过滤；
-- 轨迹年龄、速度变化、检测框尺寸等特征生成；
-- 基于物理公式生成 `required_braking_distance_m`；
-- 可选生成 `latest_brake_line_m`、`brake_boundary_crossed` 和 `risk_level_weak`。
-
-从全部 `outputs` 自动查找原始 CSV：
-
-```powershell
-python make_dataset.py --input outputs --stopline-road-y-m 249
+```text
+车辆横向位置x_i(t)（m）
+车辆纵向位置y_i(t)（m）
+车辆横向速度v_ix(t)（m/s）
+车辆纵向速度v_iy(t)（m/s）
+车辆横向加速度a_ix(t)（m/s^2）
+车辆纵向加速度a_iy(t)（m/s^2）
+车辆航向角theta_i(t)（rad）
+车型编码c_i
 ```
 
-指定某一个分析结果目录：
+后续辅助列保留区域、检测框、置信度、视频帧、车辆 ID 和车型等信息。
 
-```powershell
-python make_dataset.py --input outputs\20260722_153012_vehicles --stopline-road-y-m 249
+`vehicles_frame_risk_timeseries.csv` 每帧每区域输出一行，核心字段为：
+
+```text
+区域车辆数N(t)
+有效风险车辆数
+研究区域面积S_A（m^2）
+车流密度rho(t)（veh/m^2）
+区域瞬时事故概率P_A(t)
+最大单车风险P_i(t)
+最大车辆对风险P_ij(t)
+最大风险类型
 ```
 
-指定某一个 CSV：
+`vehicles_pairwise_risk.csv` 记录非零风险车辆对：
+
+```text
+TTC_ij(t)（s）
+LTTC_ij(t)（s）
+纵向追尾风险P_long_ij(t)
+侧向擦碰风险P_lat_ij(t)
+车辆对综合碰撞概率P_ij(t)
+```
+
+视频预览会实时显示车辆状态向量和每个区域的：
+
+```text
+region_1 risk P_A(t) = ...%
+N(t) = ...
+rho(t) = ... veh/m^2
+max pair = i->j ...%
+```
+
+## 5. 构建时序数据集
+
+`make_dataset.py` 读取 `*_frame_risk_timeseries.csv`，按 `video_id + region_id` 独立切分滑动窗口。
 
 ```powershell
-python make_dataset.py --input outputs\20260722_153012_vehicles\vehicles_vehicle_tracks.csv --stopline-road-y-m 249
+python make_dataset.py --input outputs --window-size 60 --horizon-size 60 --risk-threshold 0.7
+```
+
+默认输入特征：
+
+```text
+区域瞬时事故概率P_A(t)
+车流密度rho(t)（veh/m^2）
+区域车辆数N(t)
+有效风险车辆数
+最大单车风险P_i(t)
+最大车辆对风险P_ij(t)
+risk_type_long
+risk_type_lat
+```
+
+弱监督标签定义为：
+
+```text
+Y(t) = 未来 horizon_size 帧内 max(P_A) 是否超过 risk_threshold
 ```
 
 输出目录示例：
 
 ```text
 datasets/
-└── 20260722_154210_dataset/
-    ├── dataset.csv
-    ├── dataset_metadata.json
-    └── feature_columns.json
+└── 20260722_163000_risk_sequence/
+    ├── train.npz
+    ├── val.npz
+    ├── test.npz
+    ├── feature_columns.json
+    ├── sequence_index.csv
+    └── dataset_metadata.json
 ```
 
-## 5. 第三步：训练机器学习模型
+## 6. 训练时序模型
 
-`train.py` 读取 `make_dataset.py` 生成的 `dataset.csv`，默认训练随机森林回归模型，目标是预测：
+`train.py` 使用 PyTorch 训练未来风险预测模型，支持：
 
 ```text
-required_braking_distance_m
+rnn
+gru
+lstm
+transformer
+mamba
 ```
 
-训练命令：
+示例：
 
 ```powershell
-python train.py --dataset-path datasets\20260722_154210_dataset\dataset.csv
+python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model lstm --epochs 30
+python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model transformer --epochs 30
+python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model mamba --epochs 30
 ```
 
-指定目标列：
-
-```powershell
-python train.py --dataset-path datasets\20260722_154210_dataset\dataset.csv --target-column required_braking_distance_m
-```
-
-输出目录示例：
+训练输出：
 
 ```text
-models/
-└── 20260722_154530_brake_model/
-    ├── brake_distance_model.joblib
-    ├── training_metadata.json
-    └── validation_predictions.csv
+trained_models/
+└── 20260722_170000_lstm_risk/
+    ├── best_model.pt
+    ├── training_history.json
+    └── training_metadata.json
 ```
 
-`training_metadata.json` 中包含训练集/验证集行数、特征列、目标列和 MAE、RMSE、R2 等指标。
+`best_model.pt` 保存模型权重、模型结构参数、特征列、标准化均值和标准差。实时部署时必须使用相同特征顺序和标准化参数构造滑动窗口。
 
-## 6. 推荐完整流程
+## 7. 项目结构
 
-```powershell
-cd D:\workplace\Mission3\Project
-conda activate project
-
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --stopline-road-y-m 249 --save-annotated-video
-
-python make_dataset.py --input outputs --stopline-road-y-m 249
-
-python train.py --dataset-path datasets\最新生成的数据集目录\dataset.csv
+```text
+.
+├── labeling.py
+├── video_analyzer.py
+├── make_dataset.py
+├── train.py
+├── models/
+│   ├── __init__.py
+│   ├── rnn.py
+│   ├── transformer.py
+│   └── mamba.py
+├── requirements.txt
+├── data/
+├── checkpoints/
+├── outputs/
+├── datasets/
+└── trained_models/
 ```
 
-最后一行中的 `最新生成的数据集目录` 替换为实际生成的目录名。
+## 8. 注意事项
+
+- `checkpoints/`、`outputs/`、`datasets/`、`trained_models/` 和视频文件默认不纳入 Git；
+- 标定 JSON 可以提交，便于复现实验；
+- 当前训练标签是基于未来机理风险阈值构造的弱监督标签；
+- 后续如果有真实事故、近碰、急刹或人工高危标注，应替换弱标签，升级为真实事故概率预测；
+- OpenCV 预览窗口不可靠渲染中文，因此画面上使用 `region_id`，CSV 和 JSON 仍可保留中文语义字段。
