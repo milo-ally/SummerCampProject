@@ -1459,8 +1459,8 @@ def main() -> None:
                 elif args.vehicle_label_mode == "speed":
                     labels.append(
                         f"{vehicle_type}\n"
-                        f"vx={format_label_float(smoothed_velocity_x_mps)}\n"
-                        f"vy={format_label_float(smoothed_velocity_y_mps)}"
+                        f"vx={format_label_float(smoothed_velocity_x_mps)} m/s\n"
+                        f"vy={format_label_float(smoothed_velocity_y_mps)} m/s"
                     )
                 elif args.vehicle_label_mode == "full":
                     labels.append(f"#{vehicle_id} {vehicle_type} {region.region_id}")

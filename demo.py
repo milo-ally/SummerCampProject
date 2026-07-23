@@ -477,8 +477,8 @@ def main() -> None:
                 )
                 labels.append(
                     f"{vehicle_type}\n"
-                    f"vx={format_label_float(smoothed_vx)}\n"
-                    f"vy={format_label_float(smoothed_vy)}"
+                    f"vx={format_label_float(smoothed_vx)} m/s\n"
+                    f"vy={format_label_float(smoothed_vy)} m/s"
                 )
                 state_label_blocks.append(
                     [
