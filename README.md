@@ -117,6 +117,25 @@ python video_analyzer.py `
   --save-annotated-video
 ```
 
+智能交通监控大屏模式：
+```powershell
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --dashboard
+```
+
+保存大屏版视频：
+```powershell
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --dashboard `
+  --save-annotated-video
+```
+
+大屏会在同一画面中实时显示检测视频、车辆总数、有效风险车辆数、最大区域风险、平均速度、车流密度、处理 FPS、区域风险排行和底部滚动趋势。可通过 `--dashboard-width`、`--dashboard-height` 调整画布尺寸，默认是 `1600x900`。
+
 关键风险参数：
 
 ```powershell
@@ -360,6 +379,27 @@ python demo.py `
   --calibration-path data\vehicles\vehicles.calibration.json `
   --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
   --save-video
+```
+
+`demo.py` 默认使用智能交通监控大屏布局，右侧区域状态会同时显示当前机理风险和时序模型预测的未来风险。保存视频时会直接输出大屏版 MP4。
+
+如果需要恢复为旧版仅在视频上叠加标注和预测块的画面：
+```powershell
+python demo.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --no-dashboard
+```
+
+大屏尺寸同样可用 `--dashboard-width` 和 `--dashboard-height` 调整，例如：
+```powershell
+python demo.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --dashboard-width 1920 `
+  --dashboard-height 1080
 ```
 
 常用参数：

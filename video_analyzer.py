@@ -178,6 +178,19 @@ class RegionRisk:
     pairwise_risks: list[PairwiseRisk]
 
 
+@dataclass
+class DashboardState:
+    maxlen: int = 180
+    risk_history: deque[float] | None = None
+    vehicle_history: deque[int] | None = None
+    density_history: deque[float] | None = None
+
+    def __post_init__(self) -> None:
+        self.risk_history = deque(maxlen=self.maxlen)
+        self.vehicle_history = deque(maxlen=self.maxlen)
+        self.density_history = deque(maxlen=self.maxlen)
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Analyze one traffic video and export vehicle trajectory CSV."
@@ -293,6 +306,23 @@ def parse_arguments() -> argparse.Namespace:
         "--save-annotated-video",
         action="store_true",
         help="Save an annotated MP4 next to the CSV.",
+    )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Render a smart-traffic monitoring dashboard instead of only the annotated frame.",
+    )
+    parser.add_argument(
+        "--dashboard-width",
+        default=1600,
+        help="Dashboard canvas width in pixels.",
+        type=int,
+    )
+    parser.add_argument(
+        "--dashboard-height",
+        default=900,
+        help="Dashboard canvas height in pixels.",
+        type=int,
     )
     return parser.parse_args()
 
@@ -1052,6 +1082,239 @@ def draw_region_risk_blocks(
     return annotated_frame
 
 
+def draw_text(
+    frame: np.ndarray,
+    text: str,
+    origin: tuple[int, int],
+    scale: float,
+    color: tuple[int, int, int],
+    thickness: int = 1,
+) -> None:
+    cv2.putText(
+        frame,
+        text,
+        origin,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        scale,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+
+
+def draw_panel(
+    frame: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    title: str | None = None,
+) -> None:
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (21, 28, 35), -1)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (64, 82, 96), 1, cv2.LINE_AA)
+    cv2.line(frame, (x1, y1), (x2, y1), (80, 190, 210), 2, cv2.LINE_AA)
+    if title:
+        draw_text(frame, title, (x1 + 14, y1 + 30), 0.62, (205, 235, 240), 1)
+
+
+def draw_metric_card(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    label: str,
+    value: str,
+    accent: tuple[int, int, int],
+) -> None:
+    cv2.rectangle(frame, (x, y), (x + width, y + height), (28, 36, 45), -1)
+    cv2.rectangle(frame, (x, y), (x + width, y + height), (66, 84, 96), 1, cv2.LINE_AA)
+    cv2.rectangle(frame, (x, y), (x + 5, y + height), accent, -1)
+    draw_text(frame, label.upper(), (x + 16, y + 24), 0.42, (150, 170, 178), 1)
+    draw_text(frame, value, (x + 16, y + height - 17), 0.82, (235, 245, 245), 2)
+
+
+def draw_sparkline(
+    frame: np.ndarray,
+    values: list[float],
+    rect: tuple[int, int, int, int],
+    color: tuple[int, int, int],
+    value_max: float | None = None,
+) -> None:
+    x1, y1, x2, y2 = rect
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (18, 24, 31), -1)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (54, 70, 82), 1, cv2.LINE_AA)
+    for ratio in (0.25, 0.5, 0.75):
+        y = int(round(y2 - (y2 - y1) * ratio))
+        cv2.line(frame, (x1 + 1, y), (x2 - 1, y), (32, 42, 50), 1, cv2.LINE_AA)
+    if len(values) < 2:
+        return
+    max_value = value_max if value_max is not None else max(values)
+    max_value = max(float(max_value), 1e-6)
+    points = []
+    for index, value in enumerate(values):
+        x = int(round(x1 + index * (x2 - x1) / max(1, len(values) - 1)))
+        y = int(round(y2 - np.clip(value / max_value, 0.0, 1.0) * (y2 - y1)))
+        points.append((x, y))
+    cv2.polylines(frame, [np.array(points, dtype=np.int32)], False, color, 2, cv2.LINE_AA)
+
+
+def render_traffic_dashboard(
+    annotated_frame: np.ndarray,
+    region_risks: list[RegionRisk],
+    vehicle_states: list[VehicleState],
+    frame_id: int,
+    timestamp_s: float,
+    source_name: str,
+    processing_fps: float,
+    dashboard_state: DashboardState,
+    predictions: dict[str, float | None] | None = None,
+    prediction_threshold: float | None = None,
+    output_size: tuple[int, int] = (1600, 900),
+) -> np.ndarray:
+    width, height = output_size
+    width = max(1100, int(width))
+    height = max(700, int(height))
+    canvas = np.full((height, width, 3), (11, 16, 22), dtype=np.uint8)
+
+    margin = 18
+    header_h = 70
+    footer_h = 170
+    gap = 16
+    right_w = max(360, int(width * 0.29))
+    video_x1 = margin
+    video_y1 = header_h + margin
+    video_x2 = width - right_w - gap - margin
+    video_y2 = height - footer_h - margin
+    right_x1 = video_x2 + gap
+    right_x2 = width - margin
+    content_h = video_y2 - video_y1
+
+    draw_text(canvas, "SMART TRAFFIC MONITOR", (margin, 44), 0.92, (225, 244, 246), 2)
+    draw_text(
+        canvas,
+        f"{source_name}  |  frame {frame_id}  |  t={timestamp_s:7.2f}s",
+        (margin + 420, 43),
+        0.55,
+        (150, 176, 188),
+        1,
+    )
+    status_color = (74, 215, 110)
+    max_risk = max((risk.probability for risk in region_risks), default=0.0)
+    if max_risk >= 0.7:
+        status_text = "ALERT"
+        status_color = (70, 80, 245)
+    elif max_risk >= 0.4:
+        status_text = "WATCH"
+        status_color = (70, 205, 245)
+    else:
+        status_text = "NORMAL"
+    draw_text(canvas, status_text, (width - 170, 44), 0.8, status_color, 2)
+
+    draw_panel(canvas, video_x1, video_y1, video_x2, video_y2, "LIVE VIDEO")
+    inner_x1, inner_y1 = video_x1 + 10, video_y1 + 42
+    inner_x2, inner_y2 = video_x2 - 10, video_y2 - 10
+    slot_w, slot_h = inner_x2 - inner_x1, inner_y2 - inner_y1
+    frame_h, frame_w = annotated_frame.shape[:2]
+    scale = min(slot_w / frame_w, slot_h / frame_h)
+    resized_w = max(1, int(round(frame_w * scale)))
+    resized_h = max(1, int(round(frame_h * scale)))
+    resized = cv2.resize(annotated_frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
+    paste_x = inner_x1 + (slot_w - resized_w) // 2
+    paste_y = inner_y1 + (slot_h - resized_h) // 2
+    canvas[paste_y : paste_y + resized_h, paste_x : paste_x + resized_w] = resized
+    cv2.rectangle(canvas, (paste_x, paste_y), (paste_x + resized_w, paste_y + resized_h), (90, 105, 115), 1)
+
+    total_vehicles = sum(risk.vehicle_count for risk in region_risks)
+    valid_vehicles = sum(risk.valid_vehicle_count for risk in region_risks)
+    total_density = sum(risk.density for risk in region_risks)
+    speeds = [
+        vector_magnitude(vehicle.vx, vehicle.vy)
+        for vehicle in vehicle_states
+        if vector_magnitude(vehicle.vx, vehicle.vy) is not None
+    ]
+    avg_speed = float(np.mean(speeds)) if speeds else 0.0
+
+    dashboard_state.risk_history.append(max_risk)
+    dashboard_state.vehicle_history.append(total_vehicles)
+    dashboard_state.density_history.append(total_density)
+
+    card_w = (right_x2 - right_x1 - 12) // 2
+    card_h = 78
+    metrics = [
+        ("vehicles", str(total_vehicles), (70, 195, 220)),
+        ("risk veh", str(valid_vehicles), risk_color_bgr(max_risk)),
+        ("max risk", f"{max_risk * 100:.1f}%", risk_color_bgr(max_risk)),
+        ("avg speed", f"{avg_speed:.1f} m/s", (88, 190, 120)),
+        ("density", f"{total_density:.4f}", (190, 165, 90)),
+        ("fps", f"{processing_fps:.1f}", (155, 135, 220)),
+    ]
+    for index, (label, value, accent) in enumerate(metrics):
+        col = index % 2
+        row = index // 2
+        draw_metric_card(
+            canvas,
+            right_x1 + col * (card_w + 12),
+            video_y1 + row * (card_h + 12),
+            card_w,
+            card_h,
+            label,
+            value,
+            accent,
+        )
+
+    table_y1 = video_y1 + 3 * (card_h + 12) + 10
+    draw_panel(canvas, right_x1, table_y1, right_x2, video_y2, "REGION STATUS")
+    sorted_risks = sorted(region_risks, key=lambda item: item.probability, reverse=True)
+    row_y = table_y1 + 58
+    row_h = max(46, min(62, (video_y2 - row_y - 10) // max(1, len(sorted_risks))))
+    for region_risk in sorted_risks[: max(1, (video_y2 - row_y - 10) // row_h)]:
+        color = risk_color_bgr(region_risk.probability)
+        cv2.rectangle(canvas, (right_x1 + 12, row_y), (right_x2 - 12, row_y + row_h - 8), (27, 35, 43), -1)
+        cv2.rectangle(canvas, (right_x1 + 12, row_y), (right_x1 + 18, row_y + row_h - 8), color, -1)
+        draw_text(canvas, region_risk.region.region_id, (right_x1 + 28, row_y + 23), 0.52, (230, 238, 238), 1)
+        draw_text(
+            canvas,
+            f"P {region_risk.probability * 100:5.1f}%   N {region_risk.vehicle_count:2d}   rho {region_risk.density:.4f}",
+            (right_x1 + 28, row_y + 47),
+            0.43,
+            (162, 184, 192),
+            1,
+        )
+        if predictions is not None:
+            prediction = predictions.get(region_risk.region.region_id)
+            if prediction is None:
+                pred_text = "future warming"
+                pred_color = (120, 138, 146)
+            else:
+                pred_text = f"future {prediction * 100:.1f}%"
+                pred_color = risk_color_bgr(prediction)
+                if prediction_threshold is not None and prediction >= prediction_threshold:
+                    pred_text += " ALERT"
+            draw_text(canvas, pred_text, (right_x2 - 165, row_y + 23), 0.42, pred_color, 1)
+        row_y += row_h
+
+    footer_y1 = height - footer_h
+    draw_panel(canvas, margin, footer_y1, width - margin, height - margin, "REAL-TIME TREND")
+    chart_gap = 18
+    chart_w = (width - margin * 2 - chart_gap * 2 - 30) // 3
+    chart_y1 = footer_y1 + 50
+    chart_y2 = height - margin - 18
+    chart_x = margin + 15
+    draw_text(canvas, "max risk", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
+    draw_sparkline(canvas, list(dashboard_state.risk_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (70, 210, 245), 1.0)
+    chart_x += chart_w + chart_gap
+    draw_text(canvas, "vehicle count", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
+    vehicle_max = max(5.0, float(max(dashboard_state.vehicle_history or [0])))
+    draw_sparkline(canvas, list(dashboard_state.vehicle_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (90, 220, 140), vehicle_max)
+    chart_x += chart_w + chart_gap
+    draw_text(canvas, "density", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
+    density_max = max(0.001, float(max(dashboard_state.density_history or [0.0])))
+    draw_sparkline(canvas, list(dashboard_state.density_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (205, 170, 90), density_max)
+
+    return canvas
+
+
 def read_numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
     if column not in df.columns:
         return pd.Series(dtype=float)
@@ -1308,6 +1571,12 @@ def main() -> None:
         color_lookup=sv.ColorLookup.TRACK,
     )
     source_polygons = [region.source_polygon for region in regions]
+    dashboard_state = DashboardState(maxlen=max(60, int(round(video_info.fps * 12))))
+    output_resolution_wh = (
+        (args.dashboard_width, args.dashboard_height)
+        if args.dashboard
+        else video_info.resolution_wh
+    )
 
     speed_window_frames = max(2, round(video_info.fps * args.speed_window_seconds))
     smoothing_frames = max(2, round(video_info.fps * args.speed_smoothing_seconds))
@@ -1323,7 +1592,7 @@ def main() -> None:
             str(annotated_video_path),
             fourcc,
             video_info.fps,
-            video_info.resolution_wh,
+            output_resolution_wh,
         )
 
     frame_generator = sv.get_video_frames_generator(str(source_video_path))
@@ -1623,6 +1892,19 @@ def main() -> None:
                     show_state_labels=args.show_state_labels,
                     vehicle_label_mode=args.vehicle_label_mode,
                 )
+                if args.dashboard:
+                    elapsed = max(time.perf_counter() - start_time, 1e-6)
+                    annotated_frame = render_traffic_dashboard(
+                        annotated_frame=annotated_frame,
+                        region_risks=region_risks,
+                        vehicle_states=vehicle_states,
+                        frame_id=frame_id,
+                        timestamp_s=timestamp_s,
+                        source_name=source_video_path.stem,
+                        processing_fps=(frame_id + 1) / elapsed,
+                        dashboard_state=dashboard_state,
+                        output_size=output_resolution_wh,
+                    )
 
                 if video_writer is not None:
                     video_writer.write(annotated_frame)

@@ -16,6 +16,7 @@ from ultralytics import YOLO
 from models import build_model
 from video_analyzer import (
     COCO_VEHICLE_CLASS_IDS,
+    DashboardState,
     MODEL_PATH,
     VEHICLE_TYPE_BY_COCO_ID,
     VehicleState,
@@ -28,7 +29,9 @@ from video_analyzer import (
     heading_angle_rad,
     load_calibration,
     make_annotated_frame,
+    make_empty_detections,
     print_progress,
+    render_traffic_dashboard,
     resolve_existing_path,
     safe_name,
 )
@@ -88,6 +91,13 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument("--no-show", action="store_true")
     parser.add_argument("--save-video", action="store_true")
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the smart-traffic monitoring dashboard layout.",
+    )
+    parser.add_argument("--dashboard-width", default=1600, type=int)
+    parser.add_argument("--dashboard-height", default=900, type=int)
     return parser.parse_args()
 
 
@@ -356,6 +366,13 @@ def main() -> None:
         color_lookup=sv.ColorLookup.TRACK,
     )
     source_polygons = [region.source_polygon for region in regions]
+    use_dashboard = not args.no_dashboard
+    dashboard_state = DashboardState(maxlen=max(60, int(round(video_info.fps * 12))))
+    output_resolution_wh = (
+        (args.dashboard_width, args.dashboard_height)
+        if use_dashboard
+        else video_info.resolution_wh
+    )
 
     speed_window_frames = max(2, round(video_info.fps * args.speed_window_seconds))
     smoothing_frames = max(2, round(video_info.fps * args.speed_smoothing_seconds))
@@ -375,7 +392,7 @@ def main() -> None:
             str(annotated_video_path),
             fourcc,
             video_info.fps,
-            video_info.resolution_wh,
+            output_resolution_wh,
         )
 
     frame_generator = sv.get_video_frames_generator(str(source_video_path))
@@ -407,6 +424,8 @@ def main() -> None:
                 vehicle_mask = np.isin(detections.class_id, list(COCO_VEHICLE_CLASS_IDS))
                 detections = detections[vehicle_mask]
                 detections = byte_track.update_with_detections(detections=detections)
+            if detections.tracker_id is None:
+                detections = make_empty_detections()
 
             image_points = detections.get_anchors_coordinates(anchor=anchor)
             keep_mask, assigned_regions, road_points = assign_points_to_regions(
@@ -566,6 +585,21 @@ def main() -> None:
                     regions=regions,
                     threshold=threshold,
                 )
+                if use_dashboard:
+                    elapsed = max(time.perf_counter() - start_time, 1e-6)
+                    annotated_frame = render_traffic_dashboard(
+                        annotated_frame=annotated_frame,
+                        region_risks=region_risks,
+                        vehicle_states=vehicle_states,
+                        frame_id=frame_id,
+                        timestamp_s=timestamp_s,
+                        source_name=source_video_path.stem,
+                        processing_fps=(frame_id + 1) / elapsed,
+                        dashboard_state=dashboard_state,
+                        predictions=predictions,
+                        prediction_threshold=threshold,
+                        output_size=output_resolution_wh,
+                    )
 
                 if video_writer is not None:
                     video_writer.write(annotated_frame)
