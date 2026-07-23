@@ -475,7 +475,6 @@ def main() -> None:
                         class_id=class_id,
                     )
                 )
-                labels.append(f"#{vehicle_id}")
                 state_label_blocks.append(
                     [
                         f"region = {region.region_id}",

@@ -227,7 +227,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--vehicle-label-mode",
-        default="id",
+        default="none",
         choices=["none", "id", "full"],
         help="Vehicle label style in the preview: none, id, or full.",
         type=str,
