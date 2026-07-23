@@ -475,6 +475,11 @@ def main() -> None:
                         class_id=class_id,
                     )
                 )
+                labels.append(
+                    f"{vehicle_type}\n"
+                    f"vx={format_label_float(smoothed_vx)}\n"
+                    f"vy={format_label_float(smoothed_vy)}"
+                )
                 state_label_blocks.append(
                     [
                         f"region = {region.region_id}",
@@ -553,6 +558,7 @@ def main() -> None:
                     text_scale=text_scale,
                     thickness=thickness,
                     show_state_labels=False,
+                    vehicle_label_mode="speed",
                 )
                 annotated_frame = draw_temporal_prediction_blocks(
                     frame=annotated_frame,

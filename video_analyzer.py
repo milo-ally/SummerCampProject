@@ -227,9 +227,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--vehicle-label-mode",
-        default="none",
-        choices=["none", "id", "full"],
-        help="Vehicle label style in the preview: none, id, or full.",
+        default="speed",
+        choices=["none", "speed", "id", "full"],
+        help="Vehicle label style in the preview: none, speed, id, or full.",
         type=str,
     )
     parser.add_argument(
@@ -741,6 +741,68 @@ def calculate_annotation_style(
     return drawing_thickness, drawing_text_scale
 
 
+def interpolate_bgr(
+    start: tuple[int, int, int],
+    end: tuple[int, int, int],
+    ratio: float,
+) -> tuple[int, int, int]:
+    clipped_ratio = float(np.clip(ratio, 0.0, 1.0))
+    return tuple(
+        int(round(start_value + (end_value - start_value) * clipped_ratio))
+        for start_value, end_value in zip(start, end)
+    )
+
+
+def risk_color_bgr(probability: float) -> tuple[int, int, int]:
+    clipped_probability = float(np.clip(probability, 0.0, 1.0))
+    green = (70, 210, 80)
+    yellow = (70, 220, 245)
+    red = (55, 60, 245)
+    if clipped_probability <= 0.5:
+        return interpolate_bgr(green, yellow, clipped_probability / 0.5)
+    return interpolate_bgr(yellow, red, (clipped_probability - 0.5) / 0.5)
+
+
+def draw_region_polygons(
+    frame: np.ndarray,
+    source_polygons: list[np.ndarray],
+    region_risks: list[RegionRisk],
+    thickness: int,
+) -> np.ndarray:
+    annotated_frame = frame.copy()
+    outline_thickness = max(2, thickness * 2)
+    shadow_thickness = outline_thickness + max(2, thickness)
+
+    if region_risks:
+        polygon_items = [
+            (region_risk.region.source_polygon, risk_color_bgr(region_risk.probability))
+            for region_risk in region_risks
+        ]
+    else:
+        polygon_items = [(source_polygon, (55, 60, 245)) for source_polygon in source_polygons]
+
+    for polygon, color in polygon_items:
+        points = np.asarray(polygon, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(
+            annotated_frame,
+            [points],
+            isClosed=True,
+            color=(20, 20, 20),
+            thickness=shadow_thickness,
+            lineType=cv2.LINE_AA,
+        )
+        cv2.polylines(
+            annotated_frame,
+            [points],
+            isClosed=True,
+            color=color,
+            thickness=outline_thickness,
+            lineType=cv2.LINE_AA,
+        )
+
+    return annotated_frame
+
+
 def draw_state_label_blocks(
     frame: np.ndarray,
     boxes: np.ndarray,
@@ -817,6 +879,82 @@ def draw_state_label_blocks(
             (255, 255, 255),
             1,
         )
+
+    return annotated_frame
+
+
+def draw_compact_box_labels(
+    frame: np.ndarray,
+    boxes: np.ndarray,
+    labels: list[str],
+    text_scale: float,
+    thickness: int,
+) -> np.ndarray:
+    annotated_frame = frame.copy()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = max(0.20, text_scale * 0.30)
+    text_thickness = max(1, int(round(thickness * 0.45)))
+    padding = max(2, int(round(4 * font_scale)))
+    line_gap = max(1, int(round(3 * font_scale)))
+
+    for bbox, label in zip(boxes, labels):
+        lines = [line for line in label.splitlines() if line]
+        if not lines:
+            continue
+
+        x1, y1, x2, y2 = [int(round(value)) for value in bbox]
+        max_text_width = 0
+        line_heights = []
+        baselines = []
+        for line in lines:
+            (text_width, text_height), baseline = cv2.getTextSize(
+                line,
+                font,
+                font_scale,
+                text_thickness,
+            )
+            max_text_width = max(max_text_width, text_width)
+            line_heights.append(text_height)
+            baselines.append(baseline)
+
+        panel_width = max_text_width + padding * 2
+        panel_height = (
+            sum(line_heights)
+            + sum(baselines)
+            + line_gap * max(0, len(lines) - 1)
+            + padding * 2
+        )
+        panel_x1 = max(0, min(x1, annotated_frame.shape[1] - panel_width - 1))
+        panel_y1 = max(0, min(y1, annotated_frame.shape[0] - panel_height - 1))
+        if panel_height > max(8, y2 - y1) and y1 - panel_height - 2 >= 0:
+            panel_y1 = y1 - panel_height - 2
+        panel_x2 = panel_x1 + panel_width
+        panel_y2 = panel_y1 + panel_height
+
+        overlay = annotated_frame.copy()
+        cv2.rectangle(
+            overlay,
+            (panel_x1, panel_y1),
+            (panel_x2, panel_y2),
+            (25, 25, 25),
+            -1,
+        )
+        cv2.addWeighted(overlay, 0.58, annotated_frame, 0.42, 0, annotated_frame)
+
+        text_y = panel_y1 + padding
+        for line, text_height, baseline in zip(lines, line_heights, baselines):
+            text_y += text_height
+            cv2.putText(
+                annotated_frame,
+                line,
+                (panel_x1 + padding, text_y),
+                font,
+                font_scale,
+                (245, 245, 245),
+                text_thickness,
+                cv2.LINE_AA,
+            )
+            text_y += baseline + line_gap
 
     return annotated_frame
 
@@ -1083,23 +1221,32 @@ def make_annotated_frame(
     text_scale: float,
     thickness: int,
     show_state_labels: bool,
+    vehicle_label_mode: str,
 ) -> np.ndarray:
     annotated_frame = frame.copy()
     annotated_frame = trace_annotator.annotate(
         scene=annotated_frame,
         detections=detections,
     )
-    for source_polygon in source_polygons:
-        annotated_frame = sv.draw_polygon(
-            annotated_frame,
-            polygon=source_polygon,
-            color=sv.Color.RED,
-        )
+    annotated_frame = draw_region_polygons(
+        frame=annotated_frame,
+        source_polygons=source_polygons,
+        region_risks=region_risks,
+        thickness=thickness,
+    )
     annotated_frame = box_annotator.annotate(
         scene=annotated_frame,
         detections=detections,
     )
-    if labels:
+    if labels and vehicle_label_mode == "speed":
+        annotated_frame = draw_compact_box_labels(
+            frame=annotated_frame,
+            boxes=detections.xyxy,
+            labels=labels,
+            text_scale=text_scale,
+            thickness=thickness,
+        )
+    elif labels:
         annotated_frame = label_annotator.annotate(
             scene=annotated_frame,
             detections=detections,
@@ -1309,6 +1456,12 @@ def main() -> None:
                 )
                 if args.vehicle_label_mode == "id":
                     labels.append(f"#{vehicle_id}")
+                elif args.vehicle_label_mode == "speed":
+                    labels.append(
+                        f"{vehicle_type}\n"
+                        f"vx={format_label_float(smoothed_velocity_x_mps)}\n"
+                        f"vy={format_label_float(smoothed_velocity_y_mps)}"
+                    )
                 elif args.vehicle_label_mode == "full":
                     labels.append(f"#{vehicle_id} {vehicle_type} {region.region_id}")
                 state_label_blocks.append(
@@ -1468,6 +1621,7 @@ def main() -> None:
                     text_scale=text_scale,
                     thickness=thickness,
                     show_state_labels=args.show_state_labels,
+                    vehicle_label_mode=args.vehicle_label_mode,
                 )
 
                 if video_writer is not None:
