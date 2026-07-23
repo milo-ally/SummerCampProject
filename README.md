@@ -26,7 +26,8 @@ python -m pip install -r requirements.txt
 确认核心依赖：
 
 ```powershell
-python -c "import cv2, numpy, pandas, supervision, torch; from ultralytics import YOLO; print('env ok')"
+python -c `
+  "import cv2, numpy, pandas, supervision, torch; from ultralytics import YOLO; print('env ok')"
 ```
 
 YOLO 权重放在：
@@ -93,25 +94,39 @@ python labeling.py
 默认弹窗运行：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json
 ```
 
 无弹窗批处理：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --no-show
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --no-show
 ```
 
 保存标注视频：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --save-annotated-video
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --save-annotated-video
 ```
 
 关键风险参数：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --risk-alpha 1.5 --risk-beta 1.0 --risk-horizon-seconds 10 --lateral-longitudinal-gate-m 12
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --risk-alpha 1.5 `
+  --risk-beta 1.0 `
+  --risk-horizon-seconds 10 `
+  --lateral-longitudinal-gate-m 12
 ```
 
 参数含义：
@@ -198,7 +213,10 @@ max pair = i->j ...%
 如果不需要保存图片，可添加：
 
 ```powershell
-python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --no-plots
+python video_analyzer.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --no-plots
 ```
 
 ## 5. 构建时序数据集
@@ -206,11 +224,21 @@ python video_analyzer.py --source-video-path data\vehicles.mp4 --calibration-pat
 `make_dataset.py` 读取 `*_frame_risk_timeseries.csv`，按 `video_id + region_id` 独立切分滑动窗口。
 
 ```powershell
-python make_dataset.py --input outputs --window-size 60 --horizon-size 60 --risk-threshold 0.7
+python make_dataset.py `
+  --input outputs `
+  --window-size 60 `
+  --horizon-size 60 `
+  --risk-threshold 0.7
 ```
-也可以传入具体的时间戳目录: 
+
+也可以传入具体的时间戳目录：
+
 ```powershell
-python make_dataset.py --input outputs\20260722_230505_vehicles --window-size 60 --horizon-size 60 --risk-threshold 0.7
+python make_dataset.py `
+  --input outputs\20260722_230505_vehicles `
+  --window-size 60 `
+  --horizon-size 60 `
+  --risk-threshold 0.7
 ```
 
 默认输入特征：
@@ -260,9 +288,20 @@ mamba
 示例：
 
 ```powershell
-python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model lstm --epochs 30
-python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model transformer --epochs 30
-python train.py --dataset-dir datasets\20260722_163000_risk_sequence --model mamba --epochs 30
+python train.py `
+  --dataset-dir datasets\20260722_163000_risk_sequence `
+  --model lstm `
+  --epochs 30
+
+python train.py `
+  --dataset-dir datasets\20260722_163000_risk_sequence `
+  --model transformer `
+  --epochs 30
+
+python train.py `
+  --dataset-dir datasets\20260722_163000_risk_sequence `
+  --model mamba `
+  --epochs 30
 ```
 
 训练输出：
@@ -297,19 +336,30 @@ trained_models/
 运行示例：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt
+python demo.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt
 ```
 
 无弹窗批处理：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt --no-show
+python demo.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --no-show
 ```
 
 保存端到端标注视频：
 
 ```powershell
-python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\vehicles\vehicles.calibration.json --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt --save-video
+python demo.py `
+  --source-video-path data\vehicles.mp4 `
+  --calibration-path data\vehicles\vehicles.calibration.json `
+  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --save-video
 ```
 
 常用参数：
@@ -318,7 +368,8 @@ python demo.py --source-video-path data\vehicles.mp4 --calibration-path data\veh
 - `--threshold`：未来高风险报警阈值；默认读取模型 checkpoint 中的训练阈值；
 - `--device auto|cpu|cuda`：推理设备；
 - `--display-width`：预览窗口宽度；
-- `--risk-alpha`、`--risk-beta`、`--risk-horizon-seconds`、`--lateral-longitudinal-gate-m`：端到端推理时沿用的机理风险参数。
+- `--risk-alpha`、`--risk-beta`、`--risk-horizon-seconds`、
+  `--lateral-longitudinal-gate-m`：端到端推理时沿用的机理风险参数。
 
 输出目录示例：
 

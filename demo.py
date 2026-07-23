@@ -20,6 +20,7 @@ from video_analyzer import (
     VEHICLE_TYPE_BY_COCO_ID,
     VehicleState,
     assign_points_to_regions,
+    calculate_annotation_style,
     calculate_region_risks,
     create_output_dir,
     estimate_velocity_mps,
@@ -338,8 +339,10 @@ def main() -> None:
     yolo_model = YOLO(str(MODEL_PATH))
     anchor = sv.Position(args.anchor)
     byte_track = sv.ByteTrack(frame_rate=video_info.fps)
-    thickness = sv.calculate_optimal_line_thickness(resolution_wh=video_info.resolution_wh)
-    text_scale = sv.calculate_optimal_text_scale(resolution_wh=video_info.resolution_wh)
+    thickness, text_scale = calculate_annotation_style(
+        resolution_wh=video_info.resolution_wh,
+        display_width=args.display_width,
+    )
     box_annotator = sv.BoxAnnotator(thickness=thickness)
     label_annotator = sv.LabelAnnotator(
         text_scale=text_scale,
@@ -472,7 +475,7 @@ def main() -> None:
                         class_id=class_id,
                     )
                 )
-                labels.append(f"#{vehicle_id} {vehicle_type} {region.region_id}")
+                labels.append(f"#{vehicle_id}")
                 state_label_blocks.append(
                     [
                         f"region = {region.region_id}",
@@ -550,6 +553,7 @@ def main() -> None:
                     trace_annotator=trace_annotator,
                     text_scale=text_scale,
                     thickness=thickness,
+                    show_state_labels=False,
                 )
                 annotated_frame = draw_temporal_prediction_blocks(
                     frame=annotated_frame,

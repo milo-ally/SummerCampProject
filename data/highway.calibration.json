@@ -1,0 +1,134 @@
+{
+  "source_video_path": "D:\\workplace\\Mission3\\Project\\data\\highway.mp4",
+  "frame_index": 2226,
+  "source": [
+    [
+      240.439,
+      159.195
+    ],
+    [
+      305.426,
+      159.986
+    ],
+    [
+      271.636,
+      277.887
+    ],
+    [
+      53.935,
+      279.118
+    ]
+  ],
+  "target": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      11.25,
+      0.0
+    ],
+    [
+      11.25,
+      105.0
+    ],
+    [
+      0.0,
+      105.0
+    ]
+  ],
+  "target_width_m": 11.25,
+  "target_length_m": 105.0,
+  "regions": [
+    {
+      "region_id": "region_1",
+      "name": "region_1",
+      "source": [
+        [
+          240.439,
+          159.195
+        ],
+        [
+          305.426,
+          159.986
+        ],
+        [
+          271.636,
+          277.887
+        ],
+        [
+          53.935,
+          279.118
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          11.25,
+          0.0
+        ],
+        [
+          11.25,
+          105.0
+        ],
+        [
+          0.0,
+          105.0
+        ]
+      ],
+      "target_width_m": 11.25,
+      "target_length_m": 105.0
+    },
+    {
+      "region_id": "region_2",
+      "name": "region_2",
+      "source": [
+        [
+          336.365,
+          159.229
+        ],
+        [
+          394.426,
+          159.447
+        ],
+        [
+          576.585,
+          282.447
+        ],
+        [
+          373.581,
+          287.616
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          11.25,
+          0.0
+        ],
+        [
+          11.25,
+          105.0
+        ],
+        [
+          0.0,
+          105.0
+        ]
+      ],
+      "target_width_m": 11.25,
+      "target_length_m": 105.0
+    }
+  ],
+  "distance_annotations": [],
+  "notes": {
+    "regions": "Each region is independently ordered as top-left, top-right, bottom-right, bottom-left at export time.",
+    "source": "Legacy alias for the first region.",
+    "target": "Road-plane coordinates in meters."
+  }
+}

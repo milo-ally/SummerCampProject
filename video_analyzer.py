@@ -226,6 +226,18 @@ def parse_arguments() -> argparse.Namespace:
         type=int,
     )
     parser.add_argument(
+        "--vehicle-label-mode",
+        default="id",
+        choices=["none", "id", "full"],
+        help="Vehicle label style in the preview: none, id, or full.",
+        type=str,
+    )
+    parser.add_argument(
+        "--show-state-labels",
+        action="store_true",
+        help="Show detailed per-vehicle state blocks on the video frame.",
+    )
+    parser.add_argument(
         "--plot-max-vehicles",
         default=8,
         help="Maximum number of vehicle IDs shown in kinematic plots.",
@@ -693,6 +705,42 @@ def assign_points_to_regions(
     return np.array(keep_mask, dtype=bool), assigned_regions, road_points_array
 
 
+def make_empty_detections() -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.empty((0, 4), dtype=np.float32),
+        confidence=np.empty(0, dtype=np.float32),
+        class_id=np.empty(0, dtype=int),
+        tracker_id=np.empty(0, dtype=int),
+    )
+
+
+def calculate_annotation_style(
+    resolution_wh: tuple[int, int],
+    display_width: int,
+) -> tuple[int, float]:
+    source_width, source_height = resolution_wh
+    if source_width <= 0 or source_height <= 0 or display_width <= 0:
+        return (
+            sv.calculate_optimal_line_thickness(resolution_wh=resolution_wh),
+            sv.calculate_optimal_text_scale(resolution_wh=resolution_wh),
+        )
+
+    display_scale = display_width / source_width
+    preview_resolution_wh = (
+        display_width,
+        max(1, int(round(source_height * display_scale))),
+    )
+    preview_thickness = sv.calculate_optimal_line_thickness(
+        resolution_wh=preview_resolution_wh
+    )
+    preview_text_scale = sv.calculate_optimal_text_scale(
+        resolution_wh=preview_resolution_wh
+    )
+    drawing_thickness = max(1, int(round(preview_thickness / display_scale)))
+    drawing_text_scale = max(0.1, preview_text_scale / display_scale)
+    return drawing_thickness, drawing_text_scale
+
+
 def draw_state_label_blocks(
     frame: np.ndarray,
     boxes: np.ndarray,
@@ -702,9 +750,9 @@ def draw_state_label_blocks(
 ) -> np.ndarray:
     annotated_frame = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = max(0.45, text_scale * 0.55)
-    line_height = max(16, int(28 * font_scale))
-    padding = 5
+    font_scale = max(0.28, text_scale * 0.55)
+    line_height = max(12, int(28 * font_scale))
+    padding = max(3, int(round(5 * font_scale)))
 
     for bbox, lines in zip(boxes, state_lines):
         x1, y1, x2, _ = [int(round(value)) for value in bbox]
@@ -781,83 +829,87 @@ def draw_region_risk_blocks(
 ) -> np.ndarray:
     annotated_frame = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = max(0.55, text_scale * 0.65)
-    line_height = max(18, int(30 * font_scale))
-    padding = 7
+    font_scale = max(0.32, text_scale * 0.65)
+    line_height = max(14, int(30 * font_scale))
+    padding = max(4, int(round(7 * font_scale)))
 
+    if not region_risks:
+        return annotated_frame
+
+    rows = []
     for region_risk in region_risks:
-        polygon = region_risk.region.source_polygon
-        anchor_x = int(np.min(polygon[:, 0]))
-        anchor_y = int(np.min(polygon[:, 1]))
         risk_percent = region_risk.probability * 100
-        density = region_risk.density
-        lines = [
-            f"{region_risk.region.region_id} risk P_A(t) = {risk_percent:.1f}%",
-            f"N(t) = {region_risk.vehicle_count}",
-            f"rho(t) = {density:.4f} veh/m^2",
-        ]
-        if region_risk.max_pair is not None:
-            lines.append(
-                "max pair = "
-                f"{region_risk.max_pair.follower_id}->{region_risk.max_pair.leader_id} "
-                f"{region_risk.max_pair.probability * 100:.1f}% "
-                f"{region_risk.max_pair.risk_type}"
+        rows.append(
+            (
+                risk_percent,
+                f"{region_risk.region.region_id}  "
+                f"P={risk_percent:.1f}%  "
+                f"N={region_risk.vehicle_count}  "
+                f"rho={region_risk.density:.4f}",
             )
-
-        max_text_width = 0
-        text_height = 0
-        for line in lines:
-            (text_width, text_height), _ = cv2.getTextSize(
-                line,
-                font,
-                font_scale,
-                thickness,
-            )
-            max_text_width = max(max_text_width, text_width)
-
-        panel_width = max_text_width + padding * 2
-        panel_height = line_height * len(lines) + padding * 2
-        panel_x1 = max(0, min(anchor_x, annotated_frame.shape[1] - panel_width - 1))
-        panel_y1 = max(0, anchor_y - panel_height - 6)
-        if panel_y1 <= 0:
-            panel_y1 = min(
-                annotated_frame.shape[0] - panel_height - 1,
-                anchor_y + 6,
-            )
-        panel_x2 = panel_x1 + panel_width
-        panel_y2 = panel_y1 + panel_height
-
-        if risk_percent >= 70:
-            color = (35, 35, 220)
-        elif risk_percent >= 40:
-            color = (35, 170, 230)
-        else:
-            color = (45, 130, 45)
-
-        overlay = annotated_frame.copy()
-        cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), color, -1)
-        cv2.addWeighted(overlay, 0.72, annotated_frame, 0.28, 0, annotated_frame)
-        cv2.rectangle(
-            annotated_frame,
-            (panel_x1, panel_y1),
-            (panel_x2, panel_y2),
-            (255, 255, 255),
-            1,
         )
 
-        text_y = panel_y1 + padding + text_height
-        for line in lines:
-            cv2.putText(
-                annotated_frame,
-                line,
-                (panel_x1 + padding, text_y),
-                font,
-                font_scale,
-                (255, 255, 255),
-                thickness,
-                cv2.LINE_AA,
-            )
-            text_y += line_height
+    header = "region risk"
+    max_text_width = cv2.getTextSize(header, font, font_scale, thickness)[0][0]
+    text_height = 0
+    for _, line in rows:
+        (text_width, text_height), _ = cv2.getTextSize(
+            line,
+            font,
+            font_scale,
+            thickness,
+        )
+        max_text_width = max(max_text_width, text_width)
+
+    margin = max(6, padding)
+    panel_x1 = margin
+    panel_y1 = margin
+    panel_width = max_text_width + padding * 2
+    panel_height = line_height * (len(rows) + 1) + padding * 2
+    panel_x2 = min(annotated_frame.shape[1] - 1, panel_x1 + panel_width)
+    panel_y2 = min(annotated_frame.shape[0] - 1, panel_y1 + panel_height)
+
+    overlay = annotated_frame.copy()
+    cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), (30, 30, 30), -1)
+    cv2.addWeighted(overlay, 0.52, annotated_frame, 0.48, 0, annotated_frame)
+    cv2.rectangle(
+        annotated_frame,
+        (panel_x1, panel_y1),
+        (panel_x2, panel_y2),
+        (230, 230, 230),
+        1,
+    )
+
+    text_y = panel_y1 + padding + text_height
+    cv2.putText(
+        annotated_frame,
+        header,
+        (panel_x1 + padding, text_y),
+        font,
+        font_scale,
+        (235, 235, 235),
+        thickness,
+        cv2.LINE_AA,
+    )
+    text_y += line_height
+    for risk_percent, line in rows:
+        if risk_percent >= 70:
+            color = (90, 90, 255)
+        elif risk_percent >= 40:
+            color = (75, 210, 255)
+        else:
+            color = (120, 230, 120)
+        cv2.putText(
+            annotated_frame,
+            line,
+            (panel_x1 + padding, text_y),
+            font,
+            font_scale,
+            color,
+            thickness,
+            cv2.LINE_AA,
+        )
+        text_y += line_height
 
     return annotated_frame
 
@@ -1030,6 +1082,7 @@ def make_annotated_frame(
     trace_annotator: sv.TraceAnnotator,
     text_scale: float,
     thickness: int,
+    show_state_labels: bool,
 ) -> np.ndarray:
     annotated_frame = frame.copy()
     annotated_frame = trace_annotator.annotate(
@@ -1046,18 +1099,20 @@ def make_annotated_frame(
         scene=annotated_frame,
         detections=detections,
     )
-    annotated_frame = label_annotator.annotate(
-        scene=annotated_frame,
-        detections=detections,
-        labels=labels,
-    )
-    annotated_frame = draw_state_label_blocks(
-        frame=annotated_frame,
-        boxes=detections.xyxy,
-        state_lines=state_label_blocks,
-        text_scale=text_scale,
-        thickness=thickness,
-    )
+    if labels:
+        annotated_frame = label_annotator.annotate(
+            scene=annotated_frame,
+            detections=detections,
+            labels=labels,
+        )
+    if show_state_labels:
+        annotated_frame = draw_state_label_blocks(
+            frame=annotated_frame,
+            boxes=detections.xyxy,
+            state_lines=state_label_blocks,
+            text_scale=text_scale,
+            thickness=thickness,
+        )
     return draw_region_risk_blocks(
         frame=annotated_frame,
         region_risks=region_risks,
@@ -1089,11 +1144,9 @@ def main() -> None:
     anchor = sv.Position(args.anchor)
     byte_track = sv.ByteTrack(frame_rate=video_info.fps)
 
-    thickness = sv.calculate_optimal_line_thickness(
-        resolution_wh=video_info.resolution_wh
-    )
-    text_scale = sv.calculate_optimal_text_scale(
-        resolution_wh=video_info.resolution_wh
+    thickness, text_scale = calculate_annotation_style(
+        resolution_wh=video_info.resolution_wh,
+        display_width=args.display_width,
     )
     box_annotator = sv.BoxAnnotator(thickness=thickness)
     label_annotator = sv.LabelAnnotator(
@@ -1157,7 +1210,12 @@ def main() -> None:
             if len(detections) > 0:
                 vehicle_mask = np.isin(detections.class_id, list(COCO_VEHICLE_CLASS_IDS))
                 detections = detections[vehicle_mask]
+
+            if len(detections) > 0:
                 detections = byte_track.update_with_detections(detections=detections)
+
+            if detections.tracker_id is None:
+                detections = make_empty_detections()
 
             image_points = detections.get_anchors_coordinates(anchor=anchor)
             keep_mask, assigned_regions, road_points = assign_points_to_regions(
@@ -1249,7 +1307,10 @@ def main() -> None:
                         class_id=class_id,
                     )
                 )
-                labels.append(f"#{vehicle_id} {vehicle_type} {region.region_id}")
+                if args.vehicle_label_mode == "id":
+                    labels.append(f"#{vehicle_id}")
+                elif args.vehicle_label_mode == "full":
+                    labels.append(f"#{vehicle_id} {vehicle_type} {region.region_id}")
                 state_label_blocks.append(
                     [
                         f"region = {region.region_id}",
@@ -1406,6 +1467,7 @@ def main() -> None:
                     trace_annotator=trace_annotator,
                     text_scale=text_scale,
                     thickness=thickness,
+                    show_state_labels=args.show_state_labels,
                 )
 
                 if video_writer is not None:
