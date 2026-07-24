@@ -47,8 +47,8 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default="lstm",
-        choices=["rnn", "gru", "lstm", "transformer", "mamba"],
+        default="mtpnet",
+        choices=["rnn", "gru", "lstm", "transformer", "mamba", "mtpnet"],
         help="Temporal model architecture.",
     )
     parser.add_argument("--hidden-size", default=64, type=int)

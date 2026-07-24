@@ -302,11 +302,17 @@ gru
 lstm
 transformer
 mamba
+mtpnet
 ```
 
 示例：
 
 ```powershell
+python train.py `
+  --dataset-dir datasets\20260722_163000_risk_sequence `
+  --model mtpnet `
+  --epochs 30
+
 python train.py `
   --dataset-dir datasets\20260722_163000_risk_sequence `
   --model lstm `
@@ -358,7 +364,7 @@ trained_models/
 python demo.py `
   --source-video-path data\vehicles.mp4 `
   --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt
 ```
 
 无弹窗批处理：
@@ -367,7 +373,7 @@ python demo.py `
 python demo.py `
   --source-video-path data\vehicles.mp4 `
   --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt `
   --no-show
 ```
 
@@ -377,7 +383,7 @@ python demo.py `
 python demo.py `
   --source-video-path data\vehicles.mp4 `
   --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt `
   --save-video
 ```
 
@@ -388,7 +394,7 @@ python demo.py `
 python demo.py `
   --source-video-path data\vehicles.mp4 `
   --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt `
   --no-dashboard
 ```
 
@@ -397,7 +403,7 @@ python demo.py `
 python demo.py `
   --source-video-path data\vehicles.mp4 `
   --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mamba_risk\best_model.pt `
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt `
   --dashboard-width 1920 `
   --dashboard-height 1080
 ```
@@ -445,7 +451,8 @@ window_ready
 │   ├── __init__.py
 │   ├── rnn.py
 │   ├── transformer.py
-│   └── mamba.py
+│   ├── mamba.py
+│   └── mtpnet.py
 ├── requirements.txt
 ├── data/
 ├── checkpoints/
