@@ -493,3 +493,65 @@ window_ready
 - 当前训练标签是基于未来机理风险阈值构造的弱监督标签；
 - 后续如果有真实事故、近碰、急刹或人工高危标注，应替换弱标签，升级为真实事故概率预测；
 - OpenCV 预览窗口不可靠渲染中文，因此画面上使用 `region_id`，CSV 和 JSON 仍可保留中文语义字段。
+
+## Chapter 4 table script usage
+
+Use the `project` conda environment when generating Chapter 4 experiment tables,
+because the latency table needs PyTorch and the local model definitions:
+
+```powershell
+conda run -n project python experiments\run_chapter4_experiments.py `
+  --dataset-dir datasets\20260724_174006_risk_sequence `
+  --output-root experiments\chapter4 `
+  --epochs 50 `
+  --models rnn gru lstm transformer mamba mtpnet
+```
+
+Quick structural check without model training:
+
+```powershell
+conda run -n project python experiments\run_chapter4_experiments.py `
+  --dataset-dir datasets\20260724_174006_risk_sequence `
+  --skip-training `
+  --skip-latency
+```
+
+After the script finishes, tables are saved under:
+
+```text
+experiments/chapter4/<timestamp>_chapter4/tables/
+```
+
+For the current experiment directory, use:
+
+```text
+experiments/chapter4/20260724_174209_chapter4/tables/
+```
+
+Expected table files:
+
+```text
+table_4_1_dataset_summary.csv
+table_4_2_model_settings.csv
+table_4_3_baseline_comparison.csv
+table_4_4_ablation_study.csv
+table_4_5_sensitivity.csv
+table_4_6_qualitative_cases.csv
+table_4_7_temporal_model_latency.csv
+table_4_8_system_latency.csv
+table_4_9_low_intrusion_deployment.csv
+```
+
+If the run is interrupted, inspect the latest output directory:
+
+```powershell
+Get-ChildItem experiments\chapter4
+Get-ChildItem experiments\chapter4\<timestamp>_chapter4\tables
+```
+
+Status notes:
+
+- `completed`: real test metrics were written from `training_metadata.json`.
+- `checkpoint_only_no_test_metadata`: `best_model.pt` exists, but final evaluation metadata was not written.
+- `dataset_ready_training_not_completed`: the ablation dataset exists, but the corresponding model still needs training.
+- `table_4_8_system_latency.csv` needs per-module timing records from `video_analyzer.py`; use `table_4_7_temporal_model_latency.csv` for temporal-model-only inference latency.
