@@ -380,10 +380,10 @@ python demo.py `
 保存端到端标注视频：
 
 ```powershell
-python demo.py `
-  --source-video-path data\vehicles.mp4 `
-  --calibration-path data\vehicles\vehicles.calibration.json `
-  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt `
+python demo.py 
+  --source-video-path data\vehicles.mp4 
+  --calibration-path data\vehicles\vehicles.calibration.json 
+  --temporal-model-path trained_models\20260723_000625_mtpnet_risk\best_model.pt 
   --save-video
 ```
 

@@ -32,6 +32,7 @@ from video_analyzer import (
     make_empty_detections,
     print_progress,
     render_traffic_dashboard,
+    resize_frame_to_window,
     resolve_existing_path,
     safe_name,
 )
@@ -422,6 +423,15 @@ def main() -> None:
             output_resolution_wh,
         )
 
+    preview_window_name = f"{SYSTEM_SHORT_NAME}_{TEMPORAL_NET_NAME}_demo"
+    if not args.no_show:
+        cv2.namedWindow(preview_window_name, cv2.WINDOW_NORMAL)
+        preview_height = max(
+            1,
+            int(round(output_resolution_wh[1] * args.display_width / output_resolution_wh[0])),
+        )
+        cv2.resizeWindow(preview_window_name, args.display_width, preview_height)
+
     frame_generator = sv.get_video_frames_generator(str(source_video_path))
     rows_written = 0
     total_frames = getattr(video_info, "total_frames", None)
@@ -632,14 +642,12 @@ def main() -> None:
                     video_writer.write(annotated_frame)
 
                 if not args.no_show:
-                    height, width = annotated_frame.shape[:2]
-                    display_height = int(height * args.display_width / width)
-                    display_frame = cv2.resize(
+                    display_frame = resize_frame_to_window(
                         annotated_frame,
-                        (args.display_width, display_height),
-                        interpolation=cv2.INTER_AREA,
+                        preview_window_name,
+                        args.display_width,
                     )
-                    cv2.imshow(f"{SYSTEM_SHORT_NAME}_{TEMPORAL_NET_NAME}_demo", display_frame)
+                    cv2.imshow(preview_window_name, display_frame)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 

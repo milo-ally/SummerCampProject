@@ -7,3 +7,5 @@ supervision==0.29.1
 PySide6
 torch
 matplotlib
+
+

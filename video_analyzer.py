@@ -783,6 +783,40 @@ def calculate_annotation_style(
     return drawing_thickness, drawing_text_scale
 
 
+def resize_frame_to_window(
+    frame: np.ndarray,
+    window_name: str,
+    fallback_width: int,
+) -> np.ndarray:
+    frame_height, frame_width = frame.shape[:2]
+    if frame_width <= 0 or frame_height <= 0:
+        return frame
+
+    target_width = max(1, int(fallback_width))
+    target_height = max(1, int(round(frame_height * target_width / frame_width)))
+    try:
+        _, _, window_width, window_height = cv2.getWindowImageRect(window_name)
+        if window_width > 1 and window_height > 1:
+            target_width, target_height = window_width, window_height
+    except cv2.error:
+        pass
+
+    scale = min(target_width / frame_width, target_height / frame_height)
+    resized_width = max(1, int(round(frame_width * scale)))
+    resized_height = max(1, int(round(frame_height * scale)))
+    interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+    resized = cv2.resize(frame, (resized_width, resized_height), interpolation=interpolation)
+
+    if resized_width == target_width and resized_height == target_height:
+        return resized
+
+    canvas = np.full((target_height, target_width, 3), (42, 42, 42), dtype=frame.dtype)
+    paste_x = (target_width - resized_width) // 2
+    paste_y = (target_height - resized_height) // 2
+    canvas[paste_y : paste_y + resized_height, paste_x : paste_x + resized_width] = resized
+    return canvas
+
+
 def interpolate_bgr(
     start: tuple[int, int, int],
     end: tuple[int, int, int],
@@ -1608,6 +1642,15 @@ def main() -> None:
             output_resolution_wh,
         )
 
+    preview_window_name = "annotated_frame"
+    if not args.no_show:
+        cv2.namedWindow(preview_window_name, cv2.WINDOW_NORMAL)
+        preview_height = max(
+            1,
+            int(round(output_resolution_wh[1] * args.display_width / output_resolution_wh[0])),
+        )
+        cv2.resizeWindow(preview_window_name, args.display_width, preview_height)
+
     frame_generator = sv.get_video_frames_generator(str(source_video_path))
     rows_written = 0
     total_frames = getattr(video_info, "total_frames", None)
@@ -1923,14 +1966,12 @@ def main() -> None:
                     video_writer.write(annotated_frame)
 
                 if show_preview:
-                    height, width = annotated_frame.shape[:2]
-                    display_height = int(height * args.display_width / width)
-                    display_frame = cv2.resize(
+                    display_frame = resize_frame_to_window(
                         annotated_frame,
-                        (args.display_width, display_height),
-                        interpolation=cv2.INTER_AREA,
+                        preview_window_name,
+                        args.display_width,
                     )
-                    cv2.imshow("annotated_frame", display_frame)
+                    cv2.imshow(preview_window_name, display_frame)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 

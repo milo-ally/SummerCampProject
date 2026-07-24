@@ -1,0 +1,92 @@
+{
+  "source_video_path": "C:\\Users\\lenovo\\Desktop\\Project\\SummerCampProject\\data\\anhui\\north\\north_morning.mp4",
+  "frame_index": 0,
+  "source": [
+    [
+      997.149,
+      157.531
+    ],
+    [
+      1173.895,
+      160.265
+    ],
+    [
+      1969.088,
+      1522.492
+    ],
+    [
+      341.406,
+      1522.492
+    ]
+  ],
+  "target": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      6.6,
+      0.0
+    ],
+    [
+      6.6,
+      268.38
+    ],
+    [
+      0.0,
+      268.38
+    ]
+  ],
+  "target_width_m": 6.6,
+  "target_length_m": 268.38,
+  "regions": [
+    {
+      "region_id": "region_1",
+      "name": "region_1",
+      "source": [
+        [
+          997.149,
+          157.531
+        ],
+        [
+          1173.895,
+          160.265
+        ],
+        [
+          1969.088,
+          1522.492
+        ],
+        [
+          341.406,
+          1522.492
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          6.6,
+          0.0
+        ],
+        [
+          6.6,
+          268.38
+        ],
+        [
+          0.0,
+          268.38
+        ]
+      ],
+      "target_width_m": 6.6,
+      "target_length_m": 268.38
+    }
+  ],
+  "distance_annotations": [],
+  "notes": {
+    "regions": "Each region is independently ordered as top-left, top-right, bottom-right, bottom-left at export time.",
+    "source": "Legacy alias for the first region.",
+    "target": "Road-plane coordinates in meters."
+  }
+}
