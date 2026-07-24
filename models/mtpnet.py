@@ -96,3 +96,36 @@ class MTPNetRiskPredictor(nn.Module):
         attention = torch.softmax(self.temporal_attention(temporal_output), dim=1)
         pooled = torch.sum(temporal_output * attention, dim=1)
         return self.head(pooled)
+
+
+class MTPNetNoTemporalRiskPredictor(nn.Module):
+    """MTPNet ablation that keeps only the latest mechanism feature frame."""
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int = 64,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        del num_layers
+        head_hidden_size = max(1, hidden_size // 2)
+        self.mechanism_encoder = MechanismFeatureEncoder(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            dropout=dropout,
+        )
+        self.head = nn.Sequential(
+            nn.LayerNorm(hidden_size),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, head_hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(head_hidden_size, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        latest_frame = x[:, -1, :]
+        encoded = self.mechanism_encoder(latest_frame)
+        return self.head(encoded)

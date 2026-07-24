@@ -349,6 +349,30 @@ trained_models/
 
 训练可视化包括 loss、accuracy、precision、recall、F1、AUC、ROC、PR、混淆矩阵和测试集预测概率分布。
 
+## 6.1 Chapter 4 experiment runner
+
+`experiments/run_chapter4_experiments.py` generates the experiment artifacts required by Chapter 4, including baseline comparison, MTPNet ablation tables, temporal model latency, and templates for sensitivity, qualitative cases, system latency and low-intrusion deployment records.
+
+Quick structural check without training:
+
+```powershell
+python experiments\run_chapter4_experiments.py `
+  --dataset-dir datasets\20260722_233646_risk_sequence `
+  --skip-training `
+  --skip-latency
+```
+
+Full baseline and ablation run:
+
+```powershell
+python experiments\run_chapter4_experiments.py `
+  --dataset-dir datasets\20260722_233646_risk_sequence `
+  --epochs 30 `
+  --models rnn gru lstm transformer mamba mtpnet
+```
+
+The script writes CSV tables under `experiments/chapter4/<timestamp>_chapter4/tables/`.
+
 ## 7. 端到端推理 Demo
 
 `demo.py` 将完整串联：

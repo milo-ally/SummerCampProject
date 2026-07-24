@@ -33,6 +33,7 @@ datasets/
 trained_models/
 runs/
 logs/
+experiments/chapter4/
 
 # Local videos and media; keep calibration JSON files trackable
 data/**/*.mp4

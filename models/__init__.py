@@ -1,5 +1,5 @@
 from .mamba import MambaRiskPredictor
-from .mtpnet import MTPNetRiskPredictor
+from .mtpnet import MTPNetNoTemporalRiskPredictor, MTPNetRiskPredictor
 from .rnn import GRURiskPredictor, LSTMRiskPredictor, RNNRiskPredictor
 from .transformer import TransformerRiskPredictor
 
@@ -11,6 +11,7 @@ MODEL_REGISTRY = {
     "transformer": TransformerRiskPredictor,
     "mamba": MambaRiskPredictor,
     "mtpnet": MTPNetRiskPredictor,
+    "mtpnet_no_temporal": MTPNetNoTemporalRiskPredictor,
 }
 
 
