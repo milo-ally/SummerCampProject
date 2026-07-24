@@ -1,0 +1,92 @@
+{
+  "source_video_path": "C:\\Users\\lenovo\\Desktop\\Project\\SummerCampProject\\data\\anhui\\east\\east_evening.mp4",
+  "frame_index": 0,
+  "source": [
+    [
+      165.096,
+      318.041
+    ],
+    [
+      587.576,
+      313.495
+    ],
+    [
+      1959.634,
+      1315.908
+    ],
+    [
+      -115.395,
+      1432.698
+    ]
+  ],
+  "target": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      9.9,
+      0.0
+    ],
+    [
+      9.9,
+      102.2
+    ],
+    [
+      0.0,
+      102.2
+    ]
+  ],
+  "target_width_m": 9.9,
+  "target_length_m": 102.2,
+  "regions": [
+    {
+      "region_id": "region_1",
+      "name": "region_1",
+      "source": [
+        [
+          165.096,
+          318.041
+        ],
+        [
+          587.576,
+          313.495
+        ],
+        [
+          1959.634,
+          1315.908
+        ],
+        [
+          -115.395,
+          1432.698
+        ]
+      ],
+      "target": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          9.9,
+          0.0
+        ],
+        [
+          9.9,
+          102.2
+        ],
+        [
+          0.0,
+          102.2
+        ]
+      ],
+      "target_width_m": 9.9,
+      "target_length_m": 102.2
+    }
+  ],
+  "distance_annotations": [],
+  "notes": {
+    "regions": "Each region is independently ordered as top-left, top-right, bottom-right, bottom-left at export time.",
+    "source": "Legacy alias for the first region.",
+    "target": "Road-plane coordinates in meters."
+  }
+}
