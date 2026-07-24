@@ -40,11 +40,18 @@ from video_analyzer import (
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "demo_outputs"
 ANCHOR_CHOICES = sv.Position.list()
+SYSTEM_SHORT_NAME = "VRPS"
+SYSTEM_FULL_NAME = "Vision-based Real-time Perception & Prediction System"
+TEMPORAL_NET_NAME = "MTPNet"
+TEMPORAL_NET_FULL_NAME = "Mechanism Temporal Prediction Net"
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="End-to-end live demo: vision measurement, mechanism risk and temporal prediction."
+        description=(
+            "VRPS live demo: vision-based real-time perception and MTPNet "
+            "mechanism temporal prediction."
+        )
     )
     parser.add_argument(
         "--source-video-path",
@@ -219,14 +226,18 @@ def draw_temporal_prediction_blocks(
         anchor_y = int(np.min(polygon[:, 1]))
         probability = predictions.get(region.region_id)
         if probability is None:
-            title_line = f"{region.region_id} FUTURE RISK"
-            value_line = "warming up"
-            color = (70, 70, 70)
+            title_line = f"{TEMPORAL_NET_NAME} | {region.region_id}"
+            value_line = "temporal window: warming"
+            color = (42, 55, 66)
+            edge_color = (130, 160, 175)
+            text_color = (218, 238, 240)
         else:
-            status = "HIGH" if probability >= threshold else "normal"
-            title_line = f"{region.region_id} FUTURE RISK"
-            value_line = f"Y = {probability * 100:.1f}%  {status}"
-            color = (35, 35, 220) if probability >= threshold else (45, 130, 45)
+            status = "PRED ALERT" if probability >= threshold else "stable"
+            title_line = f"{TEMPORAL_NET_NAME} | {region.region_id}"
+            value_line = f"Y(t+h) = {probability * 100:.1f}%  {status}"
+            color = (38, 46, 182) if probability >= threshold else (40, 128, 112)
+            edge_color = (96, 112, 255) if probability >= threshold else (92, 225, 205)
+            text_color = (245, 252, 252)
 
         (title_width, title_height), _ = cv2.getTextSize(
             title_line,
@@ -249,13 +260,21 @@ def draw_temporal_prediction_blocks(
 
         overlay = annotated.copy()
         cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), color, -1)
-        cv2.addWeighted(overlay, 0.82, annotated, 0.18, 0, annotated)
+        cv2.addWeighted(overlay, 0.76, annotated, 0.24, 0, annotated)
         cv2.rectangle(
             annotated,
             (panel_x1, panel_y1),
             (panel_x2, panel_y2),
-            (255, 255, 255),
+            edge_color,
             2,
+        )
+        cv2.line(
+            annotated,
+            (panel_x1 + 1, panel_y1 + 1),
+            (panel_x2 - 1, panel_y1 + 1),
+            (230, 245, 250),
+            1,
+            cv2.LINE_AA,
         )
         cv2.putText(
             annotated,
@@ -263,7 +282,7 @@ def draw_temporal_prediction_blocks(
             (panel_x1 + padding_x, panel_y1 + padding_y + title_height),
             font,
             small_font_scale,
-            (255, 255, 255),
+            (190, 232, 238),
             thickness,
             cv2.LINE_AA,
         )
@@ -276,7 +295,7 @@ def draw_temporal_prediction_blocks(
             ),
             font,
             font_scale,
-            (255, 255, 255),
+            text_color,
             thickness,
             cv2.LINE_AA,
         )
@@ -299,6 +318,14 @@ def write_metadata(
 ) -> None:
     metadata = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "system": {
+            "short_name": SYSTEM_SHORT_NAME,
+            "full_name": SYSTEM_FULL_NAME,
+        },
+        "temporal_prediction_network": {
+            "short_name": TEMPORAL_NET_NAME,
+            "full_name": TEMPORAL_NET_FULL_NAME,
+        },
         "args": vars(args),
         "feature_columns": feature_columns,
         "window_size": window_size,
@@ -612,7 +639,7 @@ def main() -> None:
                         (args.display_width, display_height),
                         interpolation=cv2.INTER_AREA,
                     )
-                    cv2.imshow("end_to_end_demo", display_frame)
+                    cv2.imshow(f"{SYSTEM_SHORT_NAME}_{TEMPORAL_NET_NAME}_demo", display_frame)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 

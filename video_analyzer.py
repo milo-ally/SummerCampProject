@@ -26,6 +26,10 @@ MODEL_PATH = CHECKPOINTS_DIR / "yolov8x.pt"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 CHECKPOINTS_DIR.mkdir(exist_ok=True)
 ANCHOR_CHOICES = sv.Position.list()
+SYSTEM_SHORT_NAME = "VRPS"
+SYSTEM_FULL_NAME = "Vision-based Real-time Perception & Prediction System"
+TEMPORAL_NET_NAME = "MTPNet"
+TEMPORAL_NET_FULL_NAME = "Mechanism Temporal Prediction Net"
 
 COCO_VEHICLE_CLASS_IDS = {2, 3, 5, 7}
 VEHICLE_TYPE_BY_COCO_ID = {
@@ -193,7 +197,7 @@ class DashboardState:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze one traffic video and export vehicle trajectory CSV."
+        description="VRPS video analyzer: export perception, mechanism risk and trajectory CSV."
     )
     parser.add_argument(
         "--source-video-path",
@@ -310,7 +314,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--dashboard",
         action="store_true",
-        help="Render a smart-traffic monitoring dashboard instead of only the annotated frame.",
+        help="Render the VRPS dashboard instead of only the annotated frame.",
     )
     parser.add_argument(
         "--dashboard-width",
@@ -419,6 +423,14 @@ def build_metadata(
     regions: list[CalibrationRegion],
 ) -> None:
     metadata = {
+        "system": {
+            "short_name": SYSTEM_SHORT_NAME,
+            "full_name": SYSTEM_FULL_NAME,
+        },
+        "temporal_prediction_network": {
+            "short_name": TEMPORAL_NET_NAME,
+            "full_name": TEMPORAL_NET_FULL_NAME,
+        },
         "source_video_path": str(source_video_path),
         "source_video_name": source_video_path.name,
         "calibration_path": str(calibration_path),
@@ -785,9 +797,9 @@ def interpolate_bgr(
 
 def risk_color_bgr(probability: float) -> tuple[int, int, int]:
     clipped_probability = float(np.clip(probability, 0.0, 1.0))
-    green = (70, 210, 80)
-    yellow = (70, 220, 245)
-    red = (55, 60, 245)
+    green = (84, 214, 176)
+    yellow = (74, 214, 242)
+    red = (66, 88, 245)
     if clipped_probability <= 0.5:
         return interpolate_bgr(green, yellow, clipped_probability / 0.5)
     return interpolate_bgr(yellow, red, (clipped_probability - 0.5) / 0.5)
@@ -809,7 +821,7 @@ def draw_region_polygons(
             for region_risk in region_risks
         ]
     else:
-        polygon_items = [(source_polygon, (55, 60, 245)) for source_polygon in source_polygons]
+        polygon_items = [(source_polygon, (66, 88, 245)) for source_polygon in source_polygons]
 
     for polygon, color in polygon_items:
         points = np.asarray(polygon, dtype=np.int32).reshape((-1, 1, 2))
@@ -876,7 +888,7 @@ def draw_state_label_blocks(
             overlay,
             (panel_x1, panel_y1),
             (panel_x2, panel_y2),
-            (35, 35, 35),
+            (26, 37, 47),
             -1,
         )
         cv2.addWeighted(overlay, 0.7, annotated_frame, 0.3, 0, annotated_frame)
@@ -884,7 +896,7 @@ def draw_state_label_blocks(
             annotated_frame,
             (panel_x1, panel_y1),
             (panel_x2, panel_y2),
-            (255, 255, 255),
+            (112, 224, 218),
             1,
         )
 
@@ -896,7 +908,7 @@ def draw_state_label_blocks(
                 (panel_x1 + padding, text_y),
                 font,
                 font_scale,
-                (255, 255, 255),
+                (232, 246, 246),
                 thickness,
                 cv2.LINE_AA,
             )
@@ -906,7 +918,7 @@ def draw_state_label_blocks(
             annotated_frame,
             (panel_x1, panel_y2),
             (x1, int(round(y1))),
-            (255, 255, 255),
+            (112, 224, 218),
             1,
         )
 
@@ -966,7 +978,7 @@ def draw_compact_box_labels(
             overlay,
             (panel_x1, panel_y1),
             (panel_x2, panel_y2),
-            (25, 25, 25),
+            (22, 31, 40),
             -1,
         )
         cv2.addWeighted(overlay, 0.58, annotated_frame, 0.42, 0, annotated_frame)
@@ -980,7 +992,7 @@ def draw_compact_box_labels(
                 (panel_x1 + padding, text_y),
                 font,
                 font_scale,
-                (245, 245, 245),
+                (230, 244, 244),
                 text_thickness,
                 cv2.LINE_AA,
             )
@@ -1017,7 +1029,7 @@ def draw_region_risk_blocks(
             )
         )
 
-    header = "region risk"
+    header = "VRPS mechanism risk"
     max_text_width = cv2.getTextSize(header, font, font_scale, thickness)[0][0]
     text_height = 0
     for _, line in rows:
@@ -1038,13 +1050,13 @@ def draw_region_risk_blocks(
     panel_y2 = min(annotated_frame.shape[0] - 1, panel_y1 + panel_height)
 
     overlay = annotated_frame.copy()
-    cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), (30, 30, 30), -1)
+    cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), (20, 29, 38), -1)
     cv2.addWeighted(overlay, 0.52, annotated_frame, 0.48, 0, annotated_frame)
     cv2.rectangle(
         annotated_frame,
         (panel_x1, panel_y1),
         (panel_x2, panel_y2),
-        (230, 230, 230),
+        (92, 190, 202),
         1,
     )
 
@@ -1055,18 +1067,18 @@ def draw_region_risk_blocks(
         (panel_x1 + padding, text_y),
         font,
         font_scale,
-        (235, 235, 235),
+        (215, 240, 242),
         thickness,
         cv2.LINE_AA,
     )
     text_y += line_height
     for risk_percent, line in rows:
         if risk_percent >= 70:
-            color = (90, 90, 255)
+            color = (88, 104, 255)
         elif risk_percent >= 40:
-            color = (75, 210, 255)
+            color = (74, 214, 242)
         else:
-            color = (120, 230, 120)
+            color = (104, 225, 182)
         cv2.putText(
             annotated_frame,
             line,
@@ -1110,11 +1122,11 @@ def draw_panel(
     y2: int,
     title: str | None = None,
 ) -> None:
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (21, 28, 35), -1)
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (64, 82, 96), 1, cv2.LINE_AA)
-    cv2.line(frame, (x1, y1), (x2, y1), (80, 190, 210), 2, cv2.LINE_AA)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (17, 25, 34), -1)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (56, 86, 102), 1, cv2.LINE_AA)
+    cv2.line(frame, (x1, y1), (x2, y1), (92, 224, 218), 2, cv2.LINE_AA)
     if title:
-        draw_text(frame, title, (x1 + 14, y1 + 30), 0.62, (205, 235, 240), 1)
+        draw_text(frame, title, (x1 + 14, y1 + 30), 0.62, (208, 240, 242), 1)
 
 
 def draw_metric_card(
@@ -1127,11 +1139,11 @@ def draw_metric_card(
     value: str,
     accent: tuple[int, int, int],
 ) -> None:
-    cv2.rectangle(frame, (x, y), (x + width, y + height), (28, 36, 45), -1)
-    cv2.rectangle(frame, (x, y), (x + width, y + height), (66, 84, 96), 1, cv2.LINE_AA)
+    cv2.rectangle(frame, (x, y), (x + width, y + height), (22, 32, 43), -1)
+    cv2.rectangle(frame, (x, y), (x + width, y + height), (60, 88, 104), 1, cv2.LINE_AA)
     cv2.rectangle(frame, (x, y), (x + 5, y + height), accent, -1)
-    draw_text(frame, label.upper(), (x + 16, y + 24), 0.42, (150, 170, 178), 1)
-    draw_text(frame, value, (x + 16, y + height - 17), 0.82, (235, 245, 245), 2)
+    draw_text(frame, label.upper(), (x + 16, y + 24), 0.42, (146, 176, 184), 1)
+    draw_text(frame, value, (x + 16, y + height - 17), 0.82, (232, 247, 247), 2)
 
 
 def draw_sparkline(
@@ -1142,11 +1154,11 @@ def draw_sparkline(
     value_max: float | None = None,
 ) -> None:
     x1, y1, x2, y2 = rect
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (18, 24, 31), -1)
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (54, 70, 82), 1, cv2.LINE_AA)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (14, 22, 30), -1)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (48, 76, 92), 1, cv2.LINE_AA)
     for ratio in (0.25, 0.5, 0.75):
         y = int(round(y2 - (y2 - y1) * ratio))
-        cv2.line(frame, (x1 + 1, y), (x2 - 1, y), (32, 42, 50), 1, cv2.LINE_AA)
+        cv2.line(frame, (x1 + 1, y), (x2 - 1, y), (30, 45, 55), 1, cv2.LINE_AA)
     if len(values) < 2:
         return
     max_value = value_max if value_max is not None else max(values)
@@ -1175,7 +1187,7 @@ def render_traffic_dashboard(
     width, height = output_size
     width = max(1100, int(width))
     height = max(700, int(height))
-    canvas = np.full((height, width, 3), (11, 16, 22), dtype=np.uint8)
+    canvas = np.full((height, width, 3), (9, 15, 22), dtype=np.uint8)
 
     margin = 18
     header_h = 70
@@ -1190,28 +1202,28 @@ def render_traffic_dashboard(
     right_x2 = width - margin
     content_h = video_y2 - video_y1
 
-    draw_text(canvas, "SMART TRAFFIC MONITOR", (margin, 44), 0.92, (225, 244, 246), 2)
+    draw_text(canvas, SYSTEM_SHORT_NAME, (margin, 44), 0.98, (226, 248, 248), 2)
     draw_text(
         canvas,
-        f"{source_name}  |  frame {frame_id}  |  t={timestamp_s:7.2f}s",
-        (margin + 420, 43),
+        f"{SYSTEM_FULL_NAME}  |  {source_name}  |  frame {frame_id}  |  t={timestamp_s:7.2f}s",
+        (margin + 130, 43),
         0.55,
-        (150, 176, 188),
+        (146, 180, 190),
         1,
     )
-    status_color = (74, 215, 110)
+    status_color = (84, 214, 176)
     max_risk = max((risk.probability for risk in region_risks), default=0.0)
     if max_risk >= 0.7:
-        status_text = "ALERT"
-        status_color = (70, 80, 245)
+        status_text = "VRPS ALERT"
+        status_color = (66, 88, 245)
     elif max_risk >= 0.4:
-        status_text = "WATCH"
-        status_color = (70, 205, 245)
+        status_text = "VRPS WATCH"
+        status_color = (74, 214, 242)
     else:
-        status_text = "NORMAL"
-    draw_text(canvas, status_text, (width - 170, 44), 0.8, status_color, 2)
+        status_text = "VRPS NORMAL"
+    draw_text(canvas, status_text, (width - 245, 44), 0.72, status_color, 2)
 
-    draw_panel(canvas, video_x1, video_y1, video_x2, video_y2, "LIVE VIDEO")
+    draw_panel(canvas, video_x1, video_y1, video_x2, video_y2, "VISION PERCEPTION")
     inner_x1, inner_y1 = video_x1 + 10, video_y1 + 42
     inner_x2, inner_y2 = video_x2 - 10, video_y2 - 10
     slot_w, slot_h = inner_x2 - inner_x1, inner_y2 - inner_y1
@@ -1223,7 +1235,7 @@ def render_traffic_dashboard(
     paste_x = inner_x1 + (slot_w - resized_w) // 2
     paste_y = inner_y1 + (slot_h - resized_h) // 2
     canvas[paste_y : paste_y + resized_h, paste_x : paste_x + resized_w] = resized
-    cv2.rectangle(canvas, (paste_x, paste_y), (paste_x + resized_w, paste_y + resized_h), (90, 105, 115), 1)
+    cv2.rectangle(canvas, (paste_x, paste_y), (paste_x + resized_w, paste_y + resized_h), (92, 136, 148), 1)
 
     total_vehicles = sum(risk.vehicle_count for risk in region_risks)
     valid_vehicles = sum(risk.valid_vehicle_count for risk in region_risks)
@@ -1242,12 +1254,12 @@ def render_traffic_dashboard(
     card_w = (right_x2 - right_x1 - 12) // 2
     card_h = 78
     metrics = [
-        ("vehicles", str(total_vehicles), (70, 195, 220)),
-        ("risk veh", str(valid_vehicles), risk_color_bgr(max_risk)),
-        ("max risk", f"{max_risk * 100:.1f}%", risk_color_bgr(max_risk)),
-        ("avg speed", f"{avg_speed:.1f} m/s", (88, 190, 120)),
-        ("density", f"{total_density:.4f}", (190, 165, 90)),
-        ("fps", f"{processing_fps:.1f}", (155, 135, 220)),
+        ("perceived veh", str(total_vehicles), (92, 224, 218)),
+        ("risk agents", str(valid_vehicles), risk_color_bgr(max_risk)),
+        ("mech risk", f"{max_risk * 100:.1f}%", risk_color_bgr(max_risk)),
+        ("avg speed", f"{avg_speed:.1f} m/s", (84, 214, 176)),
+        ("density", f"{total_density:.4f}", (74, 214, 242)),
+        ("vrps fps", f"{processing_fps:.1f}", (150, 150, 230)),
     ]
     for index, (label, value, accent) in enumerate(metrics):
         col = index % 2
@@ -1264,13 +1276,14 @@ def render_traffic_dashboard(
         )
 
     table_y1 = video_y1 + 3 * (card_h + 12) + 10
-    draw_panel(canvas, right_x1, table_y1, right_x2, video_y2, "REGION STATUS")
+    table_title = f"REGION STATE | {TEMPORAL_NET_NAME}"
+    draw_panel(canvas, right_x1, table_y1, right_x2, video_y2, table_title)
     sorted_risks = sorted(region_risks, key=lambda item: item.probability, reverse=True)
     row_y = table_y1 + 58
     row_h = max(46, min(62, (video_y2 - row_y - 10) // max(1, len(sorted_risks))))
     for region_risk in sorted_risks[: max(1, (video_y2 - row_y - 10) // row_h)]:
         color = risk_color_bgr(region_risk.probability)
-        cv2.rectangle(canvas, (right_x1 + 12, row_y), (right_x2 - 12, row_y + row_h - 8), (27, 35, 43), -1)
+        cv2.rectangle(canvas, (right_x1 + 12, row_y), (right_x2 - 12, row_y + row_h - 8), (21, 32, 43), -1)
         cv2.rectangle(canvas, (right_x1 + 12, row_y), (right_x1 + 18, row_y + row_h - 8), color, -1)
         draw_text(canvas, region_risk.region.region_id, (right_x1 + 28, row_y + 23), 0.52, (230, 238, 238), 1)
         draw_text(
@@ -1278,16 +1291,16 @@ def render_traffic_dashboard(
             f"P {region_risk.probability * 100:5.1f}%   N {region_risk.vehicle_count:2d}   rho {region_risk.density:.4f}",
             (right_x1 + 28, row_y + 47),
             0.43,
-            (162, 184, 192),
+            (158, 188, 196),
             1,
         )
         if predictions is not None:
             prediction = predictions.get(region_risk.region.region_id)
             if prediction is None:
-                pred_text = "future warming"
-                pred_color = (120, 138, 146)
+                pred_text = "MTP warming"
+                pred_color = (120, 148, 158)
             else:
-                pred_text = f"future {prediction * 100:.1f}%"
+                pred_text = f"MTP {prediction * 100:.1f}%"
                 pred_color = risk_color_bgr(prediction)
                 if prediction_threshold is not None and prediction >= prediction_threshold:
                     pred_text += " ALERT"
@@ -1295,22 +1308,22 @@ def render_traffic_dashboard(
         row_y += row_h
 
     footer_y1 = height - footer_h
-    draw_panel(canvas, margin, footer_y1, width - margin, height - margin, "REAL-TIME TREND")
+    draw_panel(canvas, margin, footer_y1, width - margin, height - margin, "VRPS REAL-TIME TREND")
     chart_gap = 18
     chart_w = (width - margin * 2 - chart_gap * 2 - 30) // 3
     chart_y1 = footer_y1 + 50
     chart_y2 = height - margin - 18
     chart_x = margin + 15
-    draw_text(canvas, "max risk", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
-    draw_sparkline(canvas, list(dashboard_state.risk_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (70, 210, 245), 1.0)
+    draw_text(canvas, "mechanism risk", (chart_x, chart_y1 - 12), 0.44, (165, 190, 198), 1)
+    draw_sparkline(canvas, list(dashboard_state.risk_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (74, 214, 242), 1.0)
     chart_x += chart_w + chart_gap
-    draw_text(canvas, "vehicle count", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
+    draw_text(canvas, "perceived vehicles", (chart_x, chart_y1 - 12), 0.44, (165, 190, 198), 1)
     vehicle_max = max(5.0, float(max(dashboard_state.vehicle_history or [0])))
-    draw_sparkline(canvas, list(dashboard_state.vehicle_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (90, 220, 140), vehicle_max)
+    draw_sparkline(canvas, list(dashboard_state.vehicle_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (84, 214, 176), vehicle_max)
     chart_x += chart_w + chart_gap
-    draw_text(canvas, "density", (chart_x, chart_y1 - 12), 0.44, (165, 185, 192), 1)
+    draw_text(canvas, "traffic density", (chart_x, chart_y1 - 12), 0.44, (165, 190, 198), 1)
     density_max = max(0.001, float(max(dashboard_state.density_history or [0.0])))
-    draw_sparkline(canvas, list(dashboard_state.density_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (205, 170, 90), density_max)
+    draw_sparkline(canvas, list(dashboard_state.density_history), (chart_x, chart_y1, chart_x + chart_w, chart_y2), (150, 150, 230), density_max)
 
     return canvas
 
@@ -1384,17 +1397,17 @@ def plot_vehicle_kinematics(
         axes[1, 0].plot(group["timestamp_s"], group["acceleration_mps2"], linewidth=1.2, label=label)
         axes[1, 1].plot(group["timestamp_s"], group[theta_col], linewidth=1.2, label=label)
 
-    axes[0, 0].set_title("Vehicle trajectories")
+    axes[0, 0].set_title("VRPS vehicle trajectories")
     axes[0, 0].set_xlabel("x_i(t) / m")
     axes[0, 0].set_ylabel("y_i(t) / m")
     axes[0, 0].axis("equal")
-    axes[0, 1].set_title("Speed magnitude")
+    axes[0, 1].set_title("VRPS speed magnitude")
     axes[0, 1].set_xlabel("time / s")
     axes[0, 1].set_ylabel("speed / m/s")
-    axes[1, 0].set_title("Acceleration magnitude")
+    axes[1, 0].set_title("VRPS acceleration magnitude")
     axes[1, 0].set_xlabel("time / s")
     axes[1, 0].set_ylabel("acceleration / m/s^2")
-    axes[1, 1].set_title("Heading")
+    axes[1, 1].set_title("VRPS heading")
     axes[1, 1].set_xlabel("time / s")
     axes[1, 1].set_ylabel("theta / rad")
     for axis in axes.ravel():
@@ -1412,9 +1425,9 @@ def plot_vehicle_kinematics(
         axes[0].plot(group["timestamp_s"], group[vy_col], linewidth=1.1, linestyle="--", label=f"{label} vy")
         axes[1].plot(group["timestamp_s"], group[ax_col], linewidth=1.1, label=f"{label} ax")
         axes[1].plot(group["timestamp_s"], group[ay_col], linewidth=1.1, linestyle="--", label=f"{label} ay")
-    axes[0].set_title("Velocity components")
+    axes[0].set_title("VRPS velocity components")
     axes[0].set_ylabel("velocity / m/s")
-    axes[1].set_title("Acceleration components")
+    axes[1].set_title("VRPS acceleration components")
     axes[1].set_xlabel("time / s")
     axes[1].set_ylabel("acceleration / m/s^2")
     for axis in axes:
@@ -1455,11 +1468,11 @@ def plot_region_risk_timeseries(
         axes[1].plot(group["timestamp_s"], group["车流密度rho(t)（veh/m^2）"], label=region_id)
         axes[2].plot(group["timestamp_s"], group["最大车辆对风险P_ij(t)"], label=region_id)
 
-    axes[0].set_title("Region instantaneous risk")
+    axes[0].set_title("VRPS mechanism risk")
     axes[0].set_ylabel("P_A(t)")
-    axes[1].set_title("Traffic density")
+    axes[1].set_title("VRPS traffic density")
     axes[1].set_ylabel("vehicles / m^2")
-    axes[2].set_title("Max pairwise risk")
+    axes[2].set_title("VRPS max pairwise risk")
     axes[2].set_xlabel("time / s")
     axes[2].set_ylabel("max P_ij(t)")
     for axis in axes:
