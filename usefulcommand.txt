@@ -1,1 +1,6 @@
-(project) C:\Users\lenovo\Desktop\Project\SummerCampProject>python video_analyzer.py --source-video-path data\anhui\north\north_evening.mp4 --calibration-path data\anhui\north\north_evening.calibration.json --save-annotated-video --dashboard
+(project) C:\Users\lenovo\Desktop\Project\SummerCampProject>
+python video_analyzer.py 
+    --source-video-path data\anhui\north\north_evening.mp4 
+    --calibration-path data\anhui\north\north_evening.calibration.json 
+    --save-annotated-video 
+    --dashboard

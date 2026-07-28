@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
-MODEL_PATH = CHECKPOINTS_DIR / "yolov8x.pt"
+MODEL_PATH = CHECKPOINTS_DIR / "yolov8n.pt"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 CHECKPOINTS_DIR.mkdir(exist_ok=True)
 ANCHOR_CHOICES = sv.Position.list()

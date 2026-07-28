@@ -33,7 +33,7 @@ python -c `
 YOLO 权重放在：
 
 ```text
-checkpoints/yolov8x.pt
+checkpoints/yolov8n.pt
 ```
 
 如果没有测试视频，可下载：
